@@ -101,6 +101,18 @@ layer = "unit"
 domain = "registry"
 
 [[scenario]]
+id = "REGISTRY-003"
+title = "У каждого процесса свой ID, остановка одного не снимает с регистрации другой"
+layer = "unit"
+domain = "registry"
+
+[[scenario]]
+id = "REGISTRY-004"
+title = "Экземпляр на занятом порту не регистрируется и не стартует"
+layer = "unit"
+domain = "registry"
+
+[[scenario]]
 id = "AUTH-REGISTER-001"
 title = "Регистрация сразу открывает сессию, почта приводится к нижнему регистру"
 layer = "integration"
