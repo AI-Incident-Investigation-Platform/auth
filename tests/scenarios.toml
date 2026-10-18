@@ -1,0 +1,197 @@
+[[scenario]]
+id = "ARCH-IMPORTS-001"
+title = "core не импортирует api, кроме DI-провайдеров"
+layer = "unit"
+domain = "architecture"
+
+[[scenario]]
+id = "ARCH-IMPORTS-002"
+title = "API-домены не импортируют друг друга"
+layer = "unit"
+domain = "architecture"
+
+[[scenario]]
+id = "ARCH-IMPORTS-003"
+title = "Роутеры не трогают слой БД"
+layer = "unit"
+domain = "architecture"
+
+[[scenario]]
+id = "ARCH-IMPORTS-004"
+title = "В src только абсолютные импорты"
+layer = "unit"
+domain = "architecture"
+
+[[scenario]]
+id = "ARCH-DI-001"
+title = "Каждая зависимость ручки зарегистрирована в контейнере"
+layer = "unit"
+domain = "architecture"
+
+[[scenario]]
+id = "CONFIG-001"
+title = "Без обязательных настроек сервис не стартует"
+layer = "unit"
+domain = "config"
+
+[[scenario]]
+id = "AUTH-TOKEN-001"
+title = "Access-токен переносит пользователя, сессию и роль"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-TOKEN-002"
+title = "Истёкший или с неверными claims access-токен отклоняется"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-TOKEN-003"
+title = "Токен, подписанный чужим ключом, отклоняется"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-TOKEN-004"
+title = "Подмена алгоритма на HS256 с публичным ключом не проходит"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-TOKEN-005"
+title = "Refresh-токен разбирается и сверяется с хэшем"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-TOKEN-006"
+title = "Битый refresh-токен отклоняется"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-JWKS-001"
+title = "Другой сервис проверяет токен ключом из JWKS, приватная часть не публикуется"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-PASSWORD-001"
+title = "Пароль хэшируется argon2 с солью"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-KEY-001"
+title = "Без ключа подписи сервис не запускается"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "REGISTRY-001"
+title = "Экземпляр регистрируется с маршрутом для gateway и проверкой /ready"
+layer = "unit"
+domain = "registry"
+
+[[scenario]]
+id = "REGISTRY-002"
+title = "Лимит запросов для gateway берётся из конфига"
+layer = "unit"
+domain = "registry"
+
+[[scenario]]
+id = "AUTH-REGISTER-001"
+title = "Регистрация сразу открывает сессию, почта приводится к нижнему регистру"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-REGISTER-002"
+title = "Занятая почта в любом регистре отклоняется"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-REGISTER-003"
+title = "Некорректная почта или короткий пароль отклоняются"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGIN-001"
+title = "Вход открывает новую сессию"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGIN-002"
+title = "Вход не раскрывает, существует ли почта"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGIN-003"
+title = "О деактивации сообщается только после верного пароля"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-SESSION-001"
+title = "Refresh ротирует токены и сохраняет сессию"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-SESSION-002"
+title = "Повторный refresh-токен сразу отзывает сессию"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-SESSION-003"
+title = "Refresh без токена или с битым токеном отклоняется"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-SESSION-004"
+title = "/me требует входа"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-SESSION-005"
+title = "Токен в заголовке Authorization принимается наравне с кукой"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGOUT-001"
+title = "После выхода access-токен отклоняется сразу, а не через 15 минут"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGOUT-002"
+title = "Выход без сессии идемпотентен"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-PASSWORD-002"
+title = "Смена пароля сразу отзывает остальные сессии и оставляет текущую"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-PASSWORD-003"
+title = "Смена пароля требует верный текущий пароль"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "HEALTH-001"
+title = "/ready проверяет БД и кэш"
+layer = "integration"
+domain = "health"
