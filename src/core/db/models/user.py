@@ -1,0 +1,19 @@
+from datetime import datetime
+from uuid import UUID, uuid7
+
+from sqlalchemy import CheckConstraint, func, true
+from sqlalchemy.orm import Mapped, mapped_column
+
+from src.core.db.enums import UserRole
+from src.core.db.models.base import Base
+
+
+class User(Base):
+    __table_args__ = (CheckConstraint("email = lower(email)", name="email_lowercase"),)
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
+    email: Mapped[str] = mapped_column(unique=True)
+    password_hash: Mapped[str]
+    role: Mapped[UserRole]
+    is_active: Mapped[bool] = mapped_column(server_default=true())
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
