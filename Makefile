@@ -1,17 +1,21 @@
-.PHONY: help config keys run up down build logs upgrade downgrade migrate \
+.PHONY: help env config keys run up down build logs upgrade downgrade migrate \
         format lint lint-fix typecheck check test test-integration test-all
 
 SRC := src tests
 PORT ?= 8001
 COMPOSE := PORT=$(PORT) docker compose -p aiip-auth-$(PORT)
+ON_HOST := DATABASE__POSTGRES_HOST=localhost CACHE__HOST=localhost \
+           REGISTRY__CONSUL_URL=http://localhost:8500 TRACING__OTLP_ENDPOINT=http://localhost:4318
 
 help:
 	@echo ""
 	@echo "  Первый запуск"
+	@echo "    env                       создать .env из .env.example (BIND_HOST для Docker)"
 	@echo "    config                    config.toml из выдачи инфры (make -C ../infra service name=auth)"
 	@echo "    keys                      сгенерировать RSA-ключ для подписи токенов"
 	@echo "    upgrade                   применить миграции"
-	@echo "    run                       запустить; второй экземпляр: SERVICE__PORT=8002 make run"
+	@echo "    run                       запустить на хосте без Docker, инфра на localhost"
+	@echo "                              второй экземпляр: SERVICE__PORT=8002 make run"
 	@echo ""
 	@echo "  Docker"
 	@echo "    up [PORT=8001]            собрать и поднять экземпляр в Docker (миграции применятся сами)"
@@ -37,6 +41,9 @@ help:
 	@echo "    test-all                  все тесты"
 	@echo ""
 
+env:
+	@test -f .env && echo ".env уже есть" || { cp .env.example .env; echo "создан .env"; }
+
 config:
 	@test -f config.toml && { echo "config.toml уже есть"; exit 1; } || true
 	@{ sed -n '/^\[service\]/,/^\[database\]/p' config.toml.example | sed '$$d'; \
@@ -51,7 +58,7 @@ keys:
 	@echo "создан keys/private.pem"
 
 run:
-	uv run python -m src
+	$(ON_HOST) uv run python -m src
 
 up:
 	$(COMPOSE) up --build -d --wait
@@ -66,13 +73,13 @@ logs:
 	$(COMPOSE) logs -f --tail=100
 
 upgrade:
-	uv run alembic upgrade head
+	$(ON_HOST) uv run alembic upgrade head
 
 downgrade:
-	uv run alembic downgrade $(REV)
+	$(ON_HOST) uv run alembic downgrade $(REV)
 
 migrate:
-	uv run alembic revision --autogenerate -m "$(MSG)"
+	$(ON_HOST) uv run alembic revision --autogenerate -m "$(MSG)"
 
 test:
 	uv run pytest tests --suite=unit

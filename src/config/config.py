@@ -21,7 +21,8 @@ PathsSources: list[tuple[Path, type[PydanticBaseSettingsSource]]] = [
 class Service(BaseModel):
     name: str = "auth"
     port: int = 8001
-    public_host: str = "host.docker.internal"
+    bind_host: str = "127.0.0.1"
+    public_host: str = ""
     route_prefix: str = "/api/auth"
 
 
@@ -103,6 +104,7 @@ class Config(BaseSettings):
 
     def missing_required(self) -> list[str]:
         required = {
+            "service.public_host": self.service.public_host,
             "database.postgres_host": self.database.postgres_host,
             "database.postgres_db": self.database.postgres_db,
             "database.postgres_username": self.database.postgres_username,

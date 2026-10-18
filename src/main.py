@@ -88,7 +88,13 @@ if cfg.tracing.enabled:
 
 
 def main() -> None:
-    uvicorn.run("src.main:app", host="0.0.0.0", port=cfg.service.port, log_config=None, workers=1)
+    uvicorn.run(
+        "src.main:app",
+        host=cfg.service.bind_host,
+        port=cfg.service.port,
+        log_config=None,
+        workers=1,
+    )
 
 
 if __name__ == "__main__":

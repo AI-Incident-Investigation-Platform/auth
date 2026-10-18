@@ -5,10 +5,7 @@ x-service: &service
   image: aiip-auth:latest
   environment:
     SERVICE__PORT: ${PORT:-8001}
-    DATABASE__POSTGRES_HOST: host.docker.internal
-    CACHE__HOST: host.docker.internal
-    REGISTRY__CONSUL_URL: http://host.docker.internal:8500
-    TRACING__OTLP_ENDPOINT: http://host.docker.internal:4318
+    SERVICE__BIND_HOST: 0.0.0.0
   volumes:
     - ./config.toml:/app/config.toml:ro
     - ./keys:/app/keys:ro
@@ -33,7 +30,7 @@ services:
       migrate:
         condition: service_completed_successfully
     ports:
-      - "127.0.0.1:${PORT:-8001}:${PORT:-8001}"
+      - "${BIND_HOST:-127.0.0.1}:${PORT:-8001}:${PORT:-8001}"
     stop_grace_period: 15s
     healthcheck:
       test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ[\"SERVICE__PORT\"]}/health')"]
