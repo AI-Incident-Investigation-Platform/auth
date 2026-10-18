@@ -25,6 +25,7 @@ from src.core.di import (
 from src.core.errors import AppError, ErrorReport
 from src.core.logging import setup_logging
 from src.core.middleware import RequestLoggingMiddleware
+from src.core.registry.exc import InstancePortBusyError
 from src.core.registry.service import RegistryService
 from src.core.security.service import SecurityService
 from src.core.tracing import setup_tracing, shutdown_tracing
@@ -51,7 +52,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await container.get(SecurityService)
     registry = await container.get(RegistryService) if cfg.registry.enabled else None
     if registry is not None:
-        await registry.register_self()
+        try:
+            await registry.register_self()
+        except InstancePortBusyError as exc:
+            log.critical("app.port_busy", extra={"port": exc.context["port"]})
+            raise
     try:
         yield
     finally:
