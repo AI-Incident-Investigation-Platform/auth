@@ -1,0 +1,42 @@
+name: AIIP-auth
+
+x-service: &service
+  build: .
+  image: aiip-auth:latest
+  environment:
+    SERVICE__PORT: ${PORT:-8001}
+    DATABASE__POSTGRES_HOST: host.docker.internal
+    CACHE__HOST: host.docker.internal
+    REGISTRY__CONSUL_URL: http://host.docker.internal:8500
+    TRACING__OTLP_ENDPOINT: http://host.docker.internal:4318
+  volumes:
+    - ./config.toml:/app/config.toml:ro
+    - ./keys:/app/keys:ro
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  migrate:
+    <<: *service
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+
+  auth:
+    <<: *service
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${PORT:-8001}:${PORT:-8001}"
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ[\"SERVICE__PORT\"]}/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
