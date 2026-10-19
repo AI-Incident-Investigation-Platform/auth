@@ -107,14 +107,14 @@ layer = "unit"
 domain = "registry"
 
 [[scenario]]
-id = "REGISTRY-004"
-title = "Экземпляр на занятом порту не регистрируется и не стартует"
+id = "REGISTRY-005"
+title = "Без public_host экземпляр в docker-сети регистрируется по своему адресу в сети"
 layer = "unit"
 domain = "registry"
 
 [[scenario]]
-id = "REGISTRY-005"
-title = "Без public_host экземпляр в docker-сети регистрируется по своему адресу в сети"
+id = "REGISTRY-006"
+title = "Экземпляр регистрируется сразу passing, если готов, и critical, если зависимости недоступны"
 layer = "unit"
 domain = "registry"
 

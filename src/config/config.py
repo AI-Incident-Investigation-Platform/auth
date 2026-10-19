@@ -60,6 +60,7 @@ class Registry(BaseModel):
     check_interval_seconds: int = 5
     deregister_after_minutes: int = 1
     timeout_seconds: float = 5
+    drain_seconds: float = 3
 
 
 class Gateway(BaseModel):

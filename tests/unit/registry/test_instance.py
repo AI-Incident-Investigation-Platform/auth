@@ -1,13 +1,11 @@
 import re
 import socket
-from collections.abc import Iterator
 from unittest.mock import AsyncMock
 
 import pytest
 
 from src.config import cfg
 from src.core.registry.client import ConsulClient
-from src.core.registry.exc import InstancePortBusyError
 from src.core.registry.service import RegistryService
 
 
@@ -21,22 +19,13 @@ def free_port(monkeypatch: pytest.MonkeyPatch) -> int:
     return port
 
 
-@pytest.fixture
-def busy_port(free_port: int) -> Iterator[int]:
-    listener = socket.socket()
-    listener.bind(("127.0.0.1", free_port))
-    listener.listen()
-    yield free_port
-    listener.close()
-
-
 @pytest.mark.case(id="REGISTRY-001")
 async def test_instance_is_registered_with_gateway_route_and_readiness_check(
     free_port: int,
 ) -> None:
     consul = AsyncMock(spec=ConsulClient)
 
-    await RegistryService(consul).register_self()
+    await RegistryService(consul).register_self(ready=True)
 
     path, registration = consul.put.await_args.args
     assert path == "/v1/agent/service/register"
@@ -59,7 +48,7 @@ async def test_gateway_rate_limit_comes_from_config(
     monkeypatch.setattr(cfg.gateway, "rate_limit_period", "1m")
     consul = AsyncMock(spec=ConsulClient)
 
-    await RegistryService(consul).register_self()
+    await RegistryService(consul).register_self(ready=True)
 
     tags = consul.put.await_args.args[1]["Tags"]
     assert "traefik.http.routers.auth.middlewares=auth-ratelimit" in tags
@@ -75,22 +64,23 @@ async def test_each_process_deregisters_only_itself(free_port: int) -> None:
     first = RegistryService(first_consul)
     second = RegistryService(second_consul)
 
-    await first.register_self()
+    await first.register_self(ready=True)
     await second.deregister_self()
 
     first_id = first_consul.put.await_args.args[1]["ID"]
     assert second_consul.put.await_args.args[0] != f"/v1/agent/service/deregister/{first_id}"
 
 
-@pytest.mark.case(id="REGISTRY-004")
-async def test_instance_on_busy_port_is_not_registered(busy_port: int) -> None:
+@pytest.mark.case(id="REGISTRY-006")
+@pytest.mark.parametrize(("ready", "status"), [(True, "passing"), (False, "critical")])
+async def test_initial_check_status_follows_readiness(
+    free_port: int, ready: bool, status: str
+) -> None:
     consul = AsyncMock(spec=ConsulClient)
 
-    with pytest.raises(InstancePortBusyError) as error:
-        await RegistryService(consul).register_self()
+    await RegistryService(consul).register_self(ready=ready)
 
-    assert error.value.context == {"port": busy_port}
-    consul.put.assert_not_awaited()
+    assert consul.put.await_args.args[1]["Check"]["Status"] == status
 
 
 @pytest.mark.case(id="REGISTRY-005")
@@ -101,7 +91,7 @@ async def test_instance_without_public_host_registers_with_its_network_address(
     monkeypatch.setattr(socket, "gethostbyname", lambda _: "172.18.0.7")
     consul = AsyncMock(spec=ConsulClient)
 
-    await RegistryService(consul).register_self()
+    await RegistryService(consul).register_self(ready=True)
 
     registration = consul.put.await_args.args[1]
     assert (registration["Address"], registration["Port"]) == ("172.18.0.7", free_port)
