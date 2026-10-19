@@ -7,7 +7,7 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db.db import Session, engine
+from src.core.db.db import engine, session_maker
 from src.core.db.models import Base
 from src.main import app as auth_app
 from src.main import container
@@ -27,7 +27,7 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
 
 @pytest.fixture
 async def db(app: FastAPI) -> AsyncIterator[AsyncSession]:
-    async with Session() as session:
+    async with session_maker() as session:
         yield session
         await session.rollback()
 

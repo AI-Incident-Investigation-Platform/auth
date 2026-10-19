@@ -7,18 +7,18 @@ from src.core.db.repositories.user import UserRepository
 
 class UnitOfWork:
     def __init__(self, session: AsyncSession) -> None:
-        self.session = session
-        self.users = UserRepository(self.session)
-        self.sessions = SessionRepository(self.session)
+        self._session = session
+        self.users = UserRepository(self._session)
+        self.sessions = SessionRepository(self._session)
 
     async def ping(self) -> None:
-        await self.session.execute(text("SELECT 1"))
+        await self._session.execute(text("SELECT 1"))
 
     async def flush(self) -> None:
-        await self.session.flush()
+        await self._session.flush()
 
     async def commit(self) -> None:
-        await self.session.commit()
+        await self._session.commit()
 
     async def rollback(self) -> None:
-        await self.session.rollback()
+        await self._session.rollback()

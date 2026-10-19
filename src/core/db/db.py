@@ -14,7 +14,7 @@ engine = create_async_engine(
 event.listen(engine.sync_engine, "do_connect", DatabaseErrorTranslator.on_connect)
 event.listen(engine.sync_engine, "handle_error", DatabaseErrorTranslator.on_error, retval=True)
 
-Session = async_sessionmaker(
+session_maker = async_sessionmaker(
     bind=engine,
     autocommit=False,
     autoflush=False,
