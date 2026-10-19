@@ -13,7 +13,7 @@ from pydantic_settings import (
 BASE_DIR = Path(__file__).parent.parent.parent
 TOML_SETTINGS_PATH = BASE_DIR / "config.toml"
 
-PathsSources: list[tuple[Path, type[PydanticBaseSettingsSource]]] = [
+PATHS_SOURCES: list[tuple[Path, type[PydanticBaseSettingsSource]]] = [
     (TOML_SETTINGS_PATH, TomlConfigSettingsSource),
 ]
 
@@ -126,7 +126,7 @@ class Config(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        active_sources = [method(settings_cls) for path, method in PathsSources if path.exists()]
+        active_sources = [method(settings_cls) for path, method in PATHS_SOURCES if path.exists()]
         return EnvSettingsSource(settings_cls), *active_sources
 
 
