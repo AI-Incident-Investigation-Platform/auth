@@ -8,25 +8,26 @@ from src.config import cfg
 from src.core.db.enums import UserRole
 
 type NormalizedEmail = Annotated[EmailStr, AfterValidator(str.lower)]
-type Password = Annotated[
+type NewPassword = Annotated[
     str,
     Field(min_length=cfg.auth.password_min_length, max_length=cfg.auth.password_max_length),
 ]
+type PasswordAttempt = Annotated[str, Field(min_length=1, max_length=cfg.auth.password_max_length)]
 
 
 class RegisterRequest(BaseModel):
     email: NormalizedEmail
-    password: Password
+    password: NewPassword
 
 
 class LoginRequest(BaseModel):
     email: NormalizedEmail
-    password: Password
+    password: PasswordAttempt
 
 
 class PasswordChangeRequest(BaseModel):
-    current_password: Password
-    new_password: Password
+    current_password: PasswordAttempt
+    new_password: NewPassword
 
 
 class UserResponse(BaseModel):

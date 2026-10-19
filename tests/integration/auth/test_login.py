@@ -42,3 +42,13 @@ async def test_login_reports_deactivated_account_only_after_correct_password(
 
     assert error_code(correct) == "auth.account_deactivated"
     assert error_code(wrong) == "auth.invalid_credentials"
+
+
+@pytest.mark.case(id="AUTH-LOGIN-004")
+async def test_short_wrong_password_is_rejected_as_invalid_credentials(
+    client: AsyncClient, account: Account
+) -> None:
+    response = await login(client, account.email, "short")
+
+    assert response.status_code == 401
+    assert error_code(response) == "auth.invalid_credentials"
