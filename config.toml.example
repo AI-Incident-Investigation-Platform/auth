@@ -1,6 +1,5 @@
 [service]
 port = 8001
-public_host = "host.docker.internal"
 
 [gateway]
 rate_limit_average = 10
@@ -17,21 +16,21 @@ cookie_secure = false
 level = "INFO"
 
 [database]
-postgres_host = "host.docker.internal"
+postgres_host = "postgres"
 postgres_port = 5432
 postgres_db = "auth"
 postgres_username = "auth"
 postgres_password = "change-me"
 
 [cache]
-host = "host.docker.internal"
+host = "dragonfly"
 port = 6379
 password = "change-me"
 db = 0
 key_prefix = "auth:"
 
 [registry]
-consul_url = "http://host.docker.internal:8500"
+consul_url = "http://consul:8500"
 
 [tracing]
-otlp_endpoint = "http://host.docker.internal:4318"
+otlp_endpoint = "http://jaeger:4318"

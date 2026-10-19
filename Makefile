@@ -1,16 +1,16 @@
-.PHONY: help env config keys run up down build logs upgrade downgrade migrate \
+.PHONY: help config keys run up down ps build logs upgrade downgrade migrate \
         format lint lint-fix typecheck check test test-integration test-all
 
 SRC := src tests
-PORT ?= 8001
-COMPOSE := PORT=$(PORT) docker compose -p aiip-auth-$(PORT)
+N ?= 1
+BUILD := BUILDX_NO_DEFAULT_ATTESTATIONS=1
 ON_HOST := DATABASE__POSTGRES_HOST=localhost CACHE__HOST=localhost \
-           REGISTRY__CONSUL_URL=http://localhost:8500 TRACING__OTLP_ENDPOINT=http://localhost:4318
+           REGISTRY__CONSUL_URL=http://localhost:8500 TRACING__OTLP_ENDPOINT=http://localhost:4318 \
+           SERVICE__PUBLIC_HOST=host.docker.internal
 
 help:
 	@echo ""
 	@echo "  Первый запуск"
-	@echo "    env                       создать .env из .env.example (BIND_HOST для Docker)"
 	@echo "    config                    config.toml из выдачи инфры (make -C ../infra service name=auth)"
 	@echo "    keys                      сгенерировать RSA-ключ для подписи токенов"
 	@echo "    upgrade                   применить миграции"
@@ -18,9 +18,10 @@ help:
 	@echo "                              второй экземпляр: SERVICE__PORT=8002 make run"
 	@echo ""
 	@echo "  Docker"
-	@echo "    up [PORT=8001]            собрать и поднять экземпляр в Docker (миграции применятся сами)"
-	@echo "    down [PORT=8001]          остановить экземпляр"
-	@echo "    logs [PORT=8001]          логи экземпляра"
+	@echo "    up [N=1]                  собрать образ, применить миграции и держать N экземпляров в сети aiip"
+	@echo "    down                      остановить все экземпляры"
+	@echo "    ps                        экземпляры и их состояние"
+	@echo "    logs                      логи всех экземпляров"
 	@echo "    build                     пересобрать образ"
 	@echo ""
 	@echo "  Миграции"
@@ -41,9 +42,6 @@ help:
 	@echo "    test-all                  все тесты"
 	@echo ""
 
-env:
-	@test -f .env && echo ".env уже есть" || { cp .env.example .env; echo "создан .env"; }
-
 config:
 	@test -f config.toml && { echo "config.toml уже есть"; exit 1; } || true
 	@{ sed -n '/^\[service\]/,/^\[database\]/p' config.toml.example | sed '$$d'; \
@@ -61,16 +59,19 @@ run:
 	$(ON_HOST) uv run python -m src
 
 up:
-	$(COMPOSE) up --build -d --wait
+	$(BUILD) docker compose up -d --build --wait --scale auth=$(N)
 
 down:
-	$(COMPOSE) down
+	docker compose down
+
+ps:
+	docker compose ps
 
 build:
-	$(COMPOSE) build
+	$(BUILD) docker compose build
 
 logs:
-	$(COMPOSE) logs -f --tail=100
+	docker compose logs -f --tail=100 auth
 
 upgrade:
 	$(ON_HOST) uv run alembic upgrade head

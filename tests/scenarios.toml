@@ -155,6 +155,12 @@ layer = "integration"
 domain = "auth"
 
 [[scenario]]
+id = "AUTH-LOGIN-004"
+title = "Неверный пароль короче минимума отклоняется как неверные данные, а не как ошибка формы"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
 id = "AUTH-SESSION-001"
 title = "Refresh ротирует токены и сохраняет сессию"
 layer = "integration"

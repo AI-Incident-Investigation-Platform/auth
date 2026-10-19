@@ -7,7 +7,6 @@ import pytest
 
 from src.config import cfg
 from src.core.registry.client import ConsulClient
-from src.core.registry.dto import ServiceInstance
 from src.core.registry.exc import InstancePortBusyError
 from src.core.registry.service import RegistryService
 
@@ -39,13 +38,16 @@ async def test_instance_is_registered_with_gateway_route_and_readiness_check(
 
     await RegistryService(consul).register_self()
 
-    instance: ServiceInstance = consul.register.await_args.args[0]
-    assert re.fullmatch(rf"auth-host\.docker\.internal-{free_port}-[0-9a-f]{{6}}", instance.id)
-    assert instance.name == "auth"
-    assert (instance.address, instance.port) == ("host.docker.internal", free_port)
-    assert "traefik.enable=true" in instance.tags
-    assert "traefik.http.routers.auth.rule=PathPrefix(`/api/auth`)" in instance.tags
-    assert instance.check_url == f"http://host.docker.internal:{free_port}/ready"
+    path, registration = consul.put.await_args.args
+    assert path == "/v1/agent/service/register"
+    assert re.fullmatch(
+        rf"auth-host\.docker\.internal-{free_port}-[0-9a-f]{{6}}", registration["ID"]
+    )
+    assert registration["Name"] == "auth"
+    assert (registration["Address"], registration["Port"]) == ("host.docker.internal", free_port)
+    assert "traefik.enable=true" in registration["Tags"]
+    assert "traefik.http.routers.auth.rule=PathPrefix(`/api/auth`)" in registration["Tags"]
+    assert registration["Check"]["HTTP"] == f"http://host.docker.internal:{free_port}/ready"
 
 
 @pytest.mark.case(id="REGISTRY-002")
@@ -59,7 +61,7 @@ async def test_gateway_rate_limit_comes_from_config(
 
     await RegistryService(consul).register_self()
 
-    tags = consul.register.await_args.args[0].tags
+    tags = consul.put.await_args.args[1]["Tags"]
     assert "traefik.http.routers.auth.middlewares=auth-ratelimit" in tags
     assert "traefik.http.middlewares.auth-ratelimit.ratelimit.average=25" in tags
     assert "traefik.http.middlewares.auth-ratelimit.ratelimit.burst=50" in tags
@@ -76,8 +78,8 @@ async def test_each_process_deregisters_only_itself(free_port: int) -> None:
     await first.register_self()
     await second.deregister_self()
 
-    first_id = first_consul.register.await_args.args[0].id
-    assert second_consul.deregister.await_args.args[0] != first_id
+    first_id = first_consul.put.await_args.args[1]["ID"]
+    assert second_consul.put.await_args.args[0] != f"/v1/agent/service/deregister/{first_id}"
 
 
 @pytest.mark.case(id="REGISTRY-004")
@@ -88,4 +90,19 @@ async def test_instance_on_busy_port_is_not_registered(busy_port: int) -> None:
         await RegistryService(consul).register_self()
 
     assert error.value.context == {"port": busy_port}
-    consul.register.assert_not_awaited()
+    consul.put.assert_not_awaited()
+
+
+@pytest.mark.case(id="REGISTRY-005")
+async def test_instance_without_public_host_registers_with_its_network_address(
+    monkeypatch: pytest.MonkeyPatch, free_port: int
+) -> None:
+    monkeypatch.setattr(cfg.service, "public_host", "")
+    monkeypatch.setattr(socket, "gethostbyname", lambda _: "172.18.0.7")
+    consul = AsyncMock(spec=ConsulClient)
+
+    await RegistryService(consul).register_self()
+
+    registration = consul.put.await_args.args[1]
+    assert (registration["Address"], registration["Port"]) == ("172.18.0.7", free_port)
+    assert registration["Check"]["HTTP"] == f"http://172.18.0.7:{free_port}/ready"

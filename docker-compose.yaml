@@ -4,13 +4,10 @@ x-service: &service
   build: .
   image: aiip-auth:latest
   environment:
-    SERVICE__PORT: ${PORT:-8001}
     SERVICE__BIND_HOST: 0.0.0.0
   volumes:
     - ./config.toml:/app/config.toml:ro
     - ./keys:/app/keys:ro
-  extra_hosts:
-    - "host.docker.internal:host-gateway"
   logging:
     driver: json-file
     options:
@@ -29,11 +26,14 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    ports:
-      - "${BIND_HOST:-127.0.0.1}:${PORT:-8001}:${PORT:-8001}"
     stop_grace_period: 15s
     healthcheck:
-      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen(f'http://127.0.0.1:{os.environ[\"SERVICE__PORT\"]}/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; from src.config import cfg; urllib.request.urlopen(f'http://127.0.0.1:{cfg.service.port}/health')"]
       interval: 5s
       timeout: 5s
       retries: 10
+
+networks:
+  default:
+    name: aiip
+    external: true

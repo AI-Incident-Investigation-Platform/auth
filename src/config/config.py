@@ -104,7 +104,6 @@ class Config(BaseSettings):
 
     def missing_required(self) -> list[str]:
         required = {
-            "service.public_host": self.service.public_host,
             "database.postgres_host": self.database.postgres_host,
             "database.postgres_db": self.database.postgres_db,
             "database.postgres_username": self.database.postgres_username,
