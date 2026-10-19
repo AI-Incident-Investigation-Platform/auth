@@ -4,7 +4,7 @@ import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import UUID, uuid7
+from uuid import UUID
 
 import jwt
 from argon2 import PasswordHasher
@@ -19,11 +19,10 @@ from jwt.algorithms import RSAAlgorithm
 
 from src.config import cfg
 from src.core.db.enums import UserRole
-from src.core.db.models.session import Session
-from src.core.db.uow import UnitOfWork
 from src.core.security.dto import (
     AccessTokenClaims,
     CurrentUser,
+    Jwk,
     RefreshToken,
 )
 from src.core.security.exc import (
@@ -80,17 +79,25 @@ class SecurityService:
         except (jwt.PyJWTError, ValueError, TypeError) as exc:
             raise NotAuthenticatedError from exc
 
-    def jwks(self) -> dict[str, list[dict[str, str]]]:
-        key = {
-            name: str(value)
-            for name, value in RSAAlgorithm.to_jwk(self._public_key, as_dict=True).items()
-        }
-        return {"keys": [{**key, "kid": self._key_id, "use": "sig", "alg": "RS256"}]}
+    def jwks(self) -> tuple[Jwk, ...]:
+        public_numbers = RSAAlgorithm.to_jwk(self._public_key, as_dict=True)
+        return (
+            Jwk(
+                kty=str(public_numbers["kty"]),
+                n=str(public_numbers["n"]),
+                e=str(public_numbers["e"]),
+                kid=self._key_id,
+                use="sig",
+                alg="RS256",
+            ),
+        )
 
-    def issue_refresh_token(self, session_id: UUID) -> RefreshToken:
+    @staticmethod
+    def issue_refresh_token(session_id: UUID) -> RefreshToken:
         return RefreshToken(session_id=session_id, secret=secrets.token_urlsafe(32))
 
-    def parse_refresh_token(self, token: str) -> RefreshToken:
+    @staticmethod
+    def parse_refresh_token(token: str) -> RefreshToken:
         session_part, _, secret = token.partition(".")
         try:
             session_id = UUID(session_part)
@@ -100,11 +107,13 @@ class SecurityService:
             raise MalformedRefreshTokenError
         return RefreshToken(session_id=session_id, secret=secret)
 
-    def hash_token(self, value: str) -> str:
+    @staticmethod
+    def hash_token(value: str) -> str:
         return hashlib.sha256(value.encode()).hexdigest()
 
-    def verify_token(self, value: str, token_hash: str) -> bool:
-        return hmac.compare_digest(self.hash_token(value), token_hash)
+    @staticmethod
+    def verify_token(value: str, token_hash: str) -> bool:
+        return hmac.compare_digest(SecurityService.hash_token(value), token_hash)
 
     def _verify_password(self, password_hash: str, password: str) -> bool:
         try:
@@ -128,7 +137,10 @@ class SessionAuthenticator:
         self._security = security
         self._revocations = revocations
 
-    async def authenticate(self, access_token: str | None) -> CurrentUser:
+    async def authenticate(
+        self, authorization: str | None, cookie_token: str | None
+    ) -> CurrentUser:
+        access_token = self._bearer_token(authorization) or cookie_token
         if not access_token:
             raise NotAuthenticatedError
         claims = self._security.decode_access_token(access_token)
@@ -136,21 +148,7 @@ class SessionAuthenticator:
             raise NotAuthenticatedError
         return CurrentUser(user_id=claims.user_id, session_id=claims.session_id, role=claims.role)
 
-
-class SessionIssuer:
-    def __init__(self, uow: UnitOfWork, security: SecurityService) -> None:
-        self._uow = uow
-        self._security = security
-
-    def open(self, user_id: UUID, user_agent: str | None, ttl: timedelta) -> RefreshToken:
-        token = self._security.issue_refresh_token(uuid7())
-        self._uow.sessions.add(
-            Session(
-                id=token.session_id,
-                user_id=user_id,
-                refresh_token_hash=self._security.hash_token(token.secret),
-                expires_at=datetime.now(UTC) + ttl,
-                user_agent=user_agent,
-            )
-        )
-        return token
+    @staticmethod
+    def _bearer_token(authorization: str | None) -> str | None:
+        scheme, _, token = (authorization or "").partition(" ")
+        return token if scheme.lower() == "bearer" else None

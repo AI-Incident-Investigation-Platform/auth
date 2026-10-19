@@ -179,6 +179,24 @@ layer = "integration"
 domain = "auth"
 
 [[scenario]]
+id = "AUTH-SESSION-006"
+title = "Деактивированный аккаунт теряет доступ к /me и смене пароля при живом токене"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-SESSION-007"
+title = "Удалённый аккаунт с живым токеном получает отдельную ошибку, а не «неверный пароль»"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-JWKS-002"
+title = "JWKS отдаёт валидный публичный ключ без лишних полей"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
 id = "AUTH-LOGOUT-001"
 title = "После выхода access-токен отклоняется сразу, а не через 15 минут"
 layer = "integration"

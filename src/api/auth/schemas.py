@@ -34,3 +34,16 @@ class UserResponse(BaseModel):
     email: str
     role: UserRole
     created_at: datetime
+
+
+class JwkResponse(BaseModel):
+    kty: str
+    n: str
+    e: str
+    kid: str
+    use: str
+    alg: str
+
+
+class JwksResponse(BaseModel):
+    keys: list[JwkResponse]

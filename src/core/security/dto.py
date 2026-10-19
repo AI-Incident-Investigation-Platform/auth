@@ -25,3 +25,13 @@ class CurrentUser:
     user_id: UUID
     session_id: UUID
     role: UserRole
+
+
+@dataclass(frozen=True)
+class Jwk:
+    kty: str
+    n: str
+    e: str
+    kid: str
+    use: str
+    alg: str

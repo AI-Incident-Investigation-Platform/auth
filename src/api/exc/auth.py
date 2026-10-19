@@ -29,3 +29,8 @@ class RefreshTokenReusedError(UnauthenticatedError):
 class WrongCurrentPasswordError(RuleViolationError):
     code = "auth.wrong_current_password"
     message = "Неверный текущий пароль"
+
+
+class AccountNotFoundError(UnauthenticatedError):
+    code = "auth.account_not_found"
+    message = "Аккаунт не найден, войдите заново"

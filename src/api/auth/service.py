@@ -1,9 +1,10 @@
 from datetime import UTC, datetime, timedelta
-from uuid import uuid7
+from uuid import UUID, uuid7
 
-from src.api.auth.dto import IssuedTokens, SignedIn
+from src.api.auth.dto import ResponseCookie, SignedIn
 from src.api.exc.auth import (
     AccountDeactivatedError,
+    AccountNotFoundError,
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
     InvalidRefreshTokenError,
@@ -14,12 +15,14 @@ from src.config import cfg
 from src.core.db.dto.user import UserDTO
 from src.core.db.enums import UserRole
 from src.core.db.exc import IntegrityViolationError
+from src.core.db.models.session import Session
 from src.core.db.models.user import User
 from src.core.db.uow import UnitOfWork
-from src.core.security.dto import AccessTokenClaims, CurrentUser
+from src.core.security.dto import AccessTokenClaims, CurrentUser, Jwk
+from src.core.security.enums import AuthCookie
 from src.core.security.exc import MalformedRefreshTokenError
 from src.core.security.revocation import SessionRevocationList
-from src.core.security.service import SecurityService, SessionIssuer
+from src.core.security.service import SecurityService
 
 
 class AuthService:
@@ -27,12 +30,10 @@ class AuthService:
         self,
         uow: UnitOfWork,
         security: SecurityService,
-        session_issuer: SessionIssuer,
         revocations: SessionRevocationList,
     ) -> None:
         self._uow = uow
         self._security = security
-        self._session_issuer = session_issuer
         self._revocations = revocations
 
     async def register(self, email: str, password: str, user_agent: str | None) -> SignedIn:
@@ -48,13 +49,13 @@ class AuthService:
         try:
             self._uow.users.add(user)
             await self._uow.flush()
-            tokens = self._open_session(user, user_agent)
+            cookies = self._open_session(user, user_agent)
             await self._uow.commit()
         except IntegrityViolationError as exc:
             if exc.constraint == "uq_users_email":
                 raise EmailAlreadyRegisteredError from exc
             raise
-        return SignedIn(user=UserDTO.from_orm(user), tokens=tokens)
+        return SignedIn(user=UserDTO.from_orm(user), cookies=cookies)
 
     async def login(self, email: str, password: str, user_agent: str | None) -> SignedIn:
         user = await self._uow.users.get_by_email(email)
@@ -63,11 +64,11 @@ class AuthService:
         if not user.is_active:
             raise AccountDeactivatedError
 
-        tokens = self._open_session(user, user_agent)
+        cookies = self._open_session(user, user_agent)
         await self._uow.commit()
-        return SignedIn(user=UserDTO.from_orm(user), tokens=tokens)
+        return SignedIn(user=UserDTO.from_orm(user), cookies=cookies)
 
-    async def refresh(self, refresh_token: str | None) -> IssuedTokens:
+    async def refresh(self, refresh_token: str | None) -> tuple[ResponseCookie, ...]:
         if not refresh_token:
             raise InvalidRefreshTokenError
         try:
@@ -85,20 +86,48 @@ class AuthService:
             await self._revocations.revoke([session.id])
             raise RefreshTokenReusedError({"session_id": str(session.id)})
 
-        user = await self._uow.users.get_by_id(session.user_id)
-        if user is None or not user.is_active:
-            raise AccountDeactivatedError
+        user = await self._get_active_user(session.user_id)
 
         new_refresh = self._security.issue_refresh_token(session.id)
         session.refresh_token_hash = self._security.hash_token(new_refresh.secret)
         session.expires_at = now + timedelta(days=cfg.auth.refresh_token_ttl_days)
-        access_token = self._security.issue_access_token(
-            AccessTokenClaims(user_id=user.id, session_id=session.id, role=user.role)
+        access_token = self._issue_access_token(user, session.id)
+        await self._uow.commit()
+        return self._session_cookies(access_token, str(new_refresh))
+
+    async def logout(self, refresh_token: str | None) -> tuple[ResponseCookie, ...]:
+        await self._close_session(refresh_token)
+        return self._expired_cookies()
+
+    async def change_password(
+        self, current_user: CurrentUser, current_password: str, new_password: str
+    ) -> None:
+        user = await self._get_active_user(current_user.user_id)
+        if not await self._security.verify_password(user.password_hash, current_password):
+            raise WrongCurrentPasswordError
+
+        user.password_hash = await self._security.hash_password(new_password)
+        revoked = await self._uow.sessions.revoke_all_for_user(
+            user.id, datetime.now(UTC), except_session_id=current_user.session_id
         )
         await self._uow.commit()
-        return IssuedTokens(access_token=access_token, refresh_token=str(new_refresh))
+        await self._revocations.revoke(revoked)
 
-    async def logout(self, refresh_token: str | None) -> None:
+    async def get_me(self, current_user: CurrentUser) -> UserDTO:
+        return UserDTO.from_orm(await self._get_active_user(current_user.user_id))
+
+    def jwks(self) -> tuple[Jwk, ...]:
+        return self._security.jwks()
+
+    async def _get_active_user(self, user_id: UUID) -> User:
+        user = await self._uow.users.get_by_id(user_id)
+        if user is None:
+            raise AccountNotFoundError
+        if not user.is_active:
+            raise AccountDeactivatedError
+        return user
+
+    async def _close_session(self, refresh_token: str | None) -> None:
         if not refresh_token:
             return
         try:
@@ -112,37 +141,64 @@ class AuthService:
         await self._uow.commit()
         await self._revocations.revoke([session.id])
 
-    async def change_password(
-        self, current_user: CurrentUser, current_password: str, new_password: str
-    ) -> None:
-        user = await self._get_user(current_user)
-        if not await self._security.verify_password(user.password_hash, current_password):
-            raise WrongCurrentPasswordError
-
-        user.password_hash = await self._security.hash_password(new_password)
-        revoked = await self._uow.sessions.revoke_all_for_user(
-            user.id, datetime.now(UTC), except_session_id=current_user.session_id
+    def _open_session(self, user: User, user_agent: str | None) -> tuple[ResponseCookie, ...]:
+        refresh_token = self._security.issue_refresh_token(uuid7())
+        self._uow.sessions.add(
+            Session(
+                id=refresh_token.session_id,
+                user_id=user.id,
+                refresh_token_hash=self._security.hash_token(refresh_token.secret),
+                expires_at=datetime.now(UTC) + timedelta(days=cfg.auth.refresh_token_ttl_days),
+                user_agent=user_agent,
+            )
         )
-        await self._uow.commit()
-        await self._revocations.revoke(revoked)
-
-    async def get_me(self, current_user: CurrentUser) -> UserDTO:
-        return UserDTO.from_orm(await self._get_user(current_user))
-
-    def jwks(self) -> dict[str, list[dict[str, str]]]:
-        return self._security.jwks()
-
-    async def _get_user(self, current_user: CurrentUser) -> User:
-        user = await self._uow.users.get_by_id(current_user.user_id)
-        if user is None:
-            raise InvalidCredentialsError
-        return user
-
-    def _open_session(self, user: User, user_agent: str | None) -> IssuedTokens:
-        refresh_token = self._session_issuer.open(
-            user.id, user_agent, timedelta(days=cfg.auth.refresh_token_ttl_days)
+        return self._session_cookies(
+            self._issue_access_token(user, refresh_token.session_id), str(refresh_token)
         )
-        access_token = self._security.issue_access_token(
-            AccessTokenClaims(user_id=user.id, session_id=refresh_token.session_id, role=user.role)
+
+    def _issue_access_token(self, user: User, session_id: UUID) -> str:
+        return self._security.issue_access_token(
+            AccessTokenClaims(user_id=user.id, session_id=session_id, role=user.role)
         )
-        return IssuedTokens(access_token=access_token, refresh_token=str(refresh_token))
+
+    @staticmethod
+    def _session_cookies(access_token: str, refresh_token: str) -> tuple[ResponseCookie, ...]:
+        return (
+            ResponseCookie(
+                key=AuthCookie.ACCESS_TOKEN,
+                value=access_token,
+                max_age=cfg.auth.access_token_ttl_minutes * 60,
+                path="/",
+                secure=cfg.auth.cookie_secure,
+                httponly=True,
+                samesite="lax",
+            ),
+            ResponseCookie(
+                key=AuthCookie.REFRESH_TOKEN,
+                value=refresh_token,
+                max_age=cfg.auth.refresh_token_ttl_days * 24 * 60 * 60,
+                path=cfg.service.route_prefix,
+                secure=cfg.auth.cookie_secure,
+                httponly=True,
+                samesite="lax",
+            ),
+        )
+
+    @staticmethod
+    def _expired_cookies() -> tuple[ResponseCookie, ...]:
+        return tuple(
+            ResponseCookie(
+                key=key,
+                value="",
+                max_age=0,
+                expires=0,
+                path=path,
+                secure=cfg.auth.cookie_secure,
+                httponly=True,
+                samesite="lax",
+            )
+            for key, path in (
+                (AuthCookie.ACCESS_TOKEN, "/"),
+                (AuthCookie.REFRESH_TOKEN, cfg.service.route_prefix),
+            )
+        )

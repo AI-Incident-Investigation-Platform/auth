@@ -1,3 +1,4 @@
+import dataclasses
 import hashlib
 import hmac
 import json
@@ -100,7 +101,7 @@ def test_token_verifies_with_key_published_in_jwks() -> None:
     security = SecurityService()
     claims = AccessTokenClaims(user_id=uuid7(), session_id=uuid7(), role=UserRole.USER)
     token = security.issue_access_token(claims)
-    published = security.jwks()["keys"][0]
+    published = dataclasses.asdict(security.jwks()[0])
 
     assert jwt.get_unverified_header(token)["kid"] == published["kid"]
     payload = jwt.decode(token, PyJWK(published).key, algorithms=["RS256"], issuer="auth")

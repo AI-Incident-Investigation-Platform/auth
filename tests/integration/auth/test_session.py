@@ -1,10 +1,10 @@
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.db.models import Session
+from src.core.db.models import Session, User
 from tests.support.auth import Account, client_with_cookies, error_code, login
 
 
@@ -130,3 +130,44 @@ async def test_password_change_requires_current_password(
 
     assert response.status_code == 422
     assert error_code(response) == "auth.wrong_current_password"
+
+
+@pytest.mark.case(id="AUTH-SESSION-006")
+async def test_deactivated_account_loses_access_with_live_token(
+    client: AsyncClient, db: AsyncSession, account: Account
+) -> None:
+    await db.execute(update(User).values(is_active=False))
+    await db.commit()
+
+    me = await client.get("/api/auth/me")
+    password = await client.post(
+        "/api/auth/password",
+        json={"current_password": account.password, "new_password": "password-2"},
+    )
+
+    assert me.status_code == password.status_code == 401
+    assert error_code(me) == error_code(password) == "auth.account_deactivated"
+
+
+@pytest.mark.case(id="AUTH-SESSION-007")
+async def test_deleted_account_is_reported_as_not_found(
+    client: AsyncClient, db: AsyncSession, account: Account
+) -> None:
+    await db.execute(delete(Session))
+    await db.execute(delete(User))
+    await db.commit()
+
+    response = await client.get("/api/auth/me")
+
+    assert response.status_code == 401
+    assert error_code(response) == "auth.account_not_found"
+
+
+@pytest.mark.case(id="AUTH-JWKS-002")
+async def test_jwks_endpoint_publishes_valid_public_key(client: AsyncClient) -> None:
+    response = await client.get("/api/auth/.well-known/jwks.json")
+
+    assert response.status_code == 200
+    (key,) = response.json()["keys"]
+    assert set(key) == {"kty", "n", "e", "kid", "use", "alg"}
+    assert (key["kty"], key["use"], key["alg"]) == ("RSA", "sig", "RS256")
