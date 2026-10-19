@@ -2,7 +2,7 @@
         format lint lint-fix typecheck check test test-integration test-all
 
 SRC := src tests
-N ?= 1
+STACK := aiip-auth
 BUILD := BUILDX_NO_DEFAULT_ATTESTATIONS=1
 ON_HOST := DATABASE__POSTGRES_HOST=localhost CACHE__HOST=localhost \
            REGISTRY__CONSUL_URL=http://localhost:8500 TRACING__OTLP_ENDPOINT=http://localhost:4318 \
@@ -17,9 +17,11 @@ help:
 	@echo "    run                       запустить на хосте без Docker, инфра на localhost"
 	@echo "                              второй экземпляр: SERVICE__PORT=8002 make run"
 	@echo ""
-	@echo "  Docker"
-	@echo "    up [N=1]                  собрать образ, применить миграции и держать N экземпляров в сети aiip"
-	@echo "    down                      остановить все экземпляры"
+	@echo "  Docker Swarm (стек aiip-auth)"
+	@echo "    up [N=<число>]            собрать образ и поочерёдно выкатить N экземпляров без простоя;"
+	@echo "                              без N число экземпляров не меняется (в первый раз 1);"
+	@echo "                              миграции — только при новом образе, откат при неудаче"
+	@echo "    down                      удалить стек, все экземпляры"
 	@echo "    ps                        экземпляры и их состояние"
 	@echo "    logs                      логи всех экземпляров"
 	@echo "    build                     пересобрать образ"
@@ -58,20 +60,21 @@ keys:
 run:
 	$(ON_HOST) uv run python -m src
 
-up:
-	$(BUILD) docker compose up -d --build --wait --scale auth=$(N)
+up: build
+	scripts/deploy.sh $(N)
 
 down:
-	docker compose down
+	docker stack rm --detach=false $(STACK)
 
 ps:
-	docker compose ps
+	@docker service ps $(STACK)_auth --filter desired-state=running \
+		--format 'table {{.Name}}\t{{.CurrentState}}\t{{.Error}}'
 
 build:
-	$(BUILD) docker compose build
+	$(BUILD) docker build -q -t aiip-auth:latest . >/dev/null
 
 logs:
-	docker compose logs -f --tail=100 auth
+	docker service logs -f --tail=100 $(STACK)_auth
 
 upgrade:
 	$(ON_HOST) uv run alembic upgrade head
