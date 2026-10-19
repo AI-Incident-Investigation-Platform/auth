@@ -1,9 +1,9 @@
-from dataclasses import asdict
 from typing import Annotated
 
 from dishka.integrations.fastapi import DishkaRoute, FromDishka
 from fastapi import APIRouter, Cookie, Header, Response, status
 
+from src.api.auth.cookies import clear_auth_cookies, set_auth_cookies
 from src.api.auth.schemas import (
     JwksResponse,
     LoginRequest,
@@ -26,8 +26,7 @@ async def register(
     user_agent: Annotated[str | None, Header()] = None,
 ) -> UserResponse:
     signed_in = await service.register(body.email, body.password, user_agent)
-    for cookie in signed_in.cookies:
-        response.set_cookie(**asdict(cookie))
+    set_auth_cookies(response, signed_in.tokens)
     return UserResponse.model_validate(signed_in.user, from_attributes=True)
 
 
@@ -39,8 +38,7 @@ async def login(
     user_agent: Annotated[str | None, Header()] = None,
 ) -> UserResponse:
     signed_in = await service.login(body.email, body.password, user_agent)
-    for cookie in signed_in.cookies:
-        response.set_cookie(**asdict(cookie))
+    set_auth_cookies(response, signed_in.tokens)
     return UserResponse.model_validate(signed_in.user, from_attributes=True)
 
 
@@ -50,8 +48,8 @@ async def refresh(
     service: FromDishka[AuthService],
     refresh_token: Annotated[str | None, Cookie(alias=AuthCookie.REFRESH_TOKEN)] = None,
 ) -> None:
-    for cookie in await service.refresh(refresh_token):
-        response.set_cookie(**asdict(cookie))
+    tokens = await service.refresh(refresh_token)
+    set_auth_cookies(response, tokens)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -60,8 +58,8 @@ async def logout(
     service: FromDishka[AuthService],
     refresh_token: Annotated[str | None, Cookie(alias=AuthCookie.REFRESH_TOKEN)] = None,
 ) -> None:
-    for cookie in await service.logout(refresh_token):
-        response.set_cookie(**asdict(cookie))
+    await service.logout(refresh_token)
+    clear_auth_cookies(response)
 
 
 @router.post("/password", status_code=status.HTTP_204_NO_CONTENT)

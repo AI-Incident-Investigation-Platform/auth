@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid7
 
-from src.api.auth.dto import ResponseCookie, SignedIn
+from src.api.auth.dto import IssuedTokens, SignedIn
 from src.api.exc.auth import (
     AccountDeactivatedError,
     AccountNotFoundError,
@@ -19,7 +19,6 @@ from src.core.db.models.session import Session
 from src.core.db.models.user import User
 from src.core.db.uow import UnitOfWork
 from src.core.security.dto import AccessTokenClaims, CurrentUser, Jwk
-from src.core.security.enums import AuthCookie
 from src.core.security.exc import MalformedRefreshTokenError
 from src.core.security.revocation import SessionRevocationList
 from src.core.security.service import SecurityService
@@ -49,13 +48,13 @@ class AuthService:
         try:
             self._uow.users.add(user)
             await self._uow.flush()
-            cookies = self._open_session(user, user_agent)
+            tokens = self._open_session(user, user_agent)
             await self._uow.commit()
         except IntegrityViolationError as exc:
             if exc.constraint == "uq_users_email":
                 raise EmailAlreadyRegisteredError from exc
             raise
-        return SignedIn(user=UserDTO.from_orm(user), cookies=cookies)
+        return SignedIn(user=UserDTO.from_orm(user), tokens=tokens)
 
     async def login(self, email: str, password: str, user_agent: str | None) -> SignedIn:
         user = await self._uow.users.get_by_email(email)
@@ -64,11 +63,11 @@ class AuthService:
         if not user.is_active:
             raise AccountDeactivatedError
 
-        cookies = self._open_session(user, user_agent)
+        tokens = self._open_session(user, user_agent)
         await self._uow.commit()
-        return SignedIn(user=UserDTO.from_orm(user), cookies=cookies)
+        return SignedIn(user=UserDTO.from_orm(user), tokens=tokens)
 
-    async def refresh(self, refresh_token: str | None) -> tuple[ResponseCookie, ...]:
+    async def refresh(self, refresh_token: str | None) -> IssuedTokens:
         if not refresh_token:
             raise InvalidRefreshTokenError
         try:
@@ -93,11 +92,21 @@ class AuthService:
         session.expires_at = now + timedelta(days=cfg.auth.refresh_token_ttl_days)
         access_token = self._issue_access_token(user, session.id)
         await self._uow.commit()
-        return self._session_cookies(access_token, str(new_refresh))
+        return IssuedTokens(access_token=access_token, refresh_token=str(new_refresh))
 
-    async def logout(self, refresh_token: str | None) -> tuple[ResponseCookie, ...]:
-        await self._close_session(refresh_token)
-        return self._expired_cookies()
+    async def logout(self, refresh_token: str | None) -> None:
+        if not refresh_token:
+            return
+        try:
+            parsed = self._security.parse_refresh_token(refresh_token)
+        except MalformedRefreshTokenError:
+            return
+        session = await self._uow.sessions.get_for_update(parsed.session_id)
+        if session is None or session.revoked_at is not None:
+            return
+        session.revoked_at = datetime.now(UTC)
+        await self._uow.commit()
+        await self._revocations.revoke([session.id])
 
     async def change_password(
         self, current_user: CurrentUser, current_password: str, new_password: str
@@ -127,21 +136,7 @@ class AuthService:
             raise AccountDeactivatedError
         return user
 
-    async def _close_session(self, refresh_token: str | None) -> None:
-        if not refresh_token:
-            return
-        try:
-            parsed = self._security.parse_refresh_token(refresh_token)
-        except MalformedRefreshTokenError:
-            return
-        session = await self._uow.sessions.get_for_update(parsed.session_id)
-        if session is None or session.revoked_at is not None:
-            return
-        session.revoked_at = datetime.now(UTC)
-        await self._uow.commit()
-        await self._revocations.revoke([session.id])
-
-    def _open_session(self, user: User, user_agent: str | None) -> tuple[ResponseCookie, ...]:
+    def _open_session(self, user: User, user_agent: str | None) -> IssuedTokens:
         refresh_token = self._security.issue_refresh_token(uuid7())
         self._uow.sessions.add(
             Session(
@@ -152,53 +147,12 @@ class AuthService:
                 user_agent=user_agent,
             )
         )
-        return self._session_cookies(
-            self._issue_access_token(user, refresh_token.session_id), str(refresh_token)
+        return IssuedTokens(
+            access_token=self._issue_access_token(user, refresh_token.session_id),
+            refresh_token=str(refresh_token),
         )
 
     def _issue_access_token(self, user: User, session_id: UUID) -> str:
         return self._security.issue_access_token(
             AccessTokenClaims(user_id=user.id, session_id=session_id, role=user.role)
-        )
-
-    @staticmethod
-    def _session_cookies(access_token: str, refresh_token: str) -> tuple[ResponseCookie, ...]:
-        return (
-            ResponseCookie(
-                key=AuthCookie.ACCESS_TOKEN,
-                value=access_token,
-                max_age=cfg.auth.access_token_ttl_minutes * 60,
-                path="/",
-                secure=cfg.auth.cookie_secure,
-                httponly=True,
-                samesite="lax",
-            ),
-            ResponseCookie(
-                key=AuthCookie.REFRESH_TOKEN,
-                value=refresh_token,
-                max_age=cfg.auth.refresh_token_ttl_days * 24 * 60 * 60,
-                path=cfg.service.route_prefix,
-                secure=cfg.auth.cookie_secure,
-                httponly=True,
-                samesite="lax",
-            ),
-        )
-
-    @staticmethod
-    def _expired_cookies() -> tuple[ResponseCookie, ...]:
-        return tuple(
-            ResponseCookie(
-                key=key,
-                value="",
-                max_age=0,
-                expires=0,
-                path=path,
-                secure=cfg.auth.cookie_secure,
-                httponly=True,
-                samesite="lax",
-            )
-            for key, path in (
-                (AuthCookie.ACCESS_TOKEN, "/"),
-                (AuthCookie.REFRESH_TOKEN, cfg.service.route_prefix),
-            )
         )
