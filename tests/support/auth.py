@@ -25,4 +25,4 @@ def client_with_cookies(app: FastAPI, cookies: dict[str, str]) -> AsyncClient:
 
 
 def error_code(response: Response) -> str:
-    return response.json()["error"]["code"]
+    return response.json()["code"]

@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from src.core.context import get_trace_id
+from src.core.context import REQUEST_ID_HEADER, get_trace_id
 from src.core.errors import (
     AppError,
     ConflictError,
@@ -48,9 +48,9 @@ class ApiErrorHandler:
         status = ApiErrorHandler._status_for(exc)
         ApiErrorHandler._record(request, report, status, ApiErrorHandler._level_for(exc), exc)
 
-        if isinstance(exc, DomainError | UnauthenticatedError):
-            return ApiErrorHandler._respond(status, exc.code, exc.message, exc.context)
-        if isinstance(exc, IntegrationError | PersistenceUnavailableError):
+        if isinstance(
+            exc, DomainError | UnauthenticatedError | IntegrationError | PersistenceUnavailableError
+        ):
             return ApiErrorHandler._respond(status, exc.code, exc.message)
         return ApiErrorHandler._respond(status, InternalError.code, InternalError.message)
 
@@ -68,8 +68,12 @@ class ApiErrorHandler:
         )
         status = HTTPStatus.UNPROCESSABLE_ENTITY
         ApiErrorHandler._record(request, report, status, logging.INFO, exc, {"fields": fields})
+        errors = [
+            {"field": ".".join(str(part) for part in field["loc"]), "message": field["msg"]}
+            for field in fields
+        ]
         return ApiErrorHandler._respond(
-            status, report.code, "Некорректные параметры запроса", {"fields": fields}
+            status, report.code, "Некорректные параметры запроса", errors=errors
         )
 
     @staticmethod
@@ -95,7 +99,7 @@ class ApiErrorHandler:
             status,
             InternalError.code,
             InternalError.message,
-            headers={"x-trace-id": get_trace_id()},
+            headers={REQUEST_ID_HEADER: get_trace_id()},
         )
 
     @staticmethod
@@ -158,16 +162,23 @@ class ApiErrorHandler:
     def _respond(
         status: HTTPStatus,
         code: str,
-        message: str,
-        details: dict[str, object] | None = None,
+        detail: str,
+        errors: list[dict[str, str]] | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> JSONResponse:
-        content = {
-            "error": {
-                "code": code,
-                "message": message,
-                "details": jsonable_encoder(details or {}),
-                "trace_id": get_trace_id(),
-            }
+        content: dict[str, object] = {
+            "type": "about:blank",
+            "title": status.phrase,
+            "status": status.value,
+            "code": code,
+            "detail": detail,
+            "request_id": get_trace_id(),
         }
-        return JSONResponse(status_code=status.value, content=content, headers=headers)
+        if errors:
+            content["errors"] = errors
+        return JSONResponse(
+            status_code=status.value,
+            content=content,
+            headers=headers,
+            media_type="application/problem+json",
+        )

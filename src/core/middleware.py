@@ -3,7 +3,7 @@ import time
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from src.core.context import get_trace_id
+from src.core.context import REQUEST_ID_HEADER, get_trace_id
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +23,9 @@ class RequestLoggingMiddleware:
         async def send_wrapper(message: Message) -> None:
             if message["type"] == "http.response.start":
                 status_holder["status"] = message["status"]
-                message.setdefault("headers", []).append((b"x-trace-id", get_trace_id().encode()))
+                message.setdefault("headers", []).append(
+                    (REQUEST_ID_HEADER.encode(), get_trace_id().encode())
+                )
             await send(message)
 
         await self.app(scope, receive, send_wrapper)

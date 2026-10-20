@@ -89,6 +89,24 @@ layer = "unit"
 domain = "security"
 
 [[scenario]]
+id = "API-ERROR-001"
+title = "Ошибка отдаётся как problem+json, request_id совпадает с X-Request-ID, контекст ошибки наружу не уходит"
+layer = "unit"
+domain = "api"
+
+[[scenario]]
+id = "API-ERROR-002"
+title = "Ошибка валидации перечисляет поля в errors[]"
+layer = "unit"
+domain = "api"
+
+[[scenario]]
+id = "API-ERROR-003"
+title = "Непредвиденная ошибка скрывает детали, но отдаёт request_id в теле и заголовке"
+layer = "unit"
+domain = "api"
+
+[[scenario]]
 id = "AUTH-REGISTER-001"
 title = "Регистрация сразу открывает сессию, почта приводится к нижнему регистру"
 layer = "integration"
