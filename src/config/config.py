@@ -22,7 +22,6 @@ class Service(BaseModel):
     name: str = "auth"
     port: int = 8001
     bind_host: str = "127.0.0.1"
-    public_host: str = ""
     route_prefix: str = "/api/auth"
 
 
@@ -54,21 +53,6 @@ class Cache(BaseModel):
         return f"redis://{credentials}{self.host}:{self.port}/{self.db}"
 
 
-class Registry(BaseModel):
-    enabled: bool = True
-    consul_url: str = ""
-    check_interval_seconds: int = 5
-    deregister_after_minutes: int = 1
-    timeout_seconds: float = 5
-    drain_seconds: float = 3
-
-
-class Gateway(BaseModel):
-    rate_limit_average: int = 10
-    rate_limit_burst: int = 10
-    rate_limit_period: str = "1s"
-
-
 class Tracing(BaseModel):
     enabled: bool = True
     otlp_endpoint: str = ""
@@ -97,8 +81,6 @@ class Config(BaseSettings):
     service: Service = Service()
     database: Database = Database()
     cache: Cache = Cache()
-    registry: Registry = Registry()
-    gateway: Gateway = Gateway()
     tracing: Tracing = Tracing()
     auth: Auth = Auth()
     logging: Logging = Logging()
@@ -111,8 +93,6 @@ class Config(BaseSettings):
             "cache.host": self.cache.host,
             "auth.private_key_path": self.auth.private_key_path,
         }
-        if self.registry.enabled:
-            required["registry.consul_url"] = self.registry.consul_url
         if self.tracing.enabled:
             required["tracing.otlp_endpoint"] = self.tracing.otlp_endpoint
         return [name for name, value in required.items() if not value]

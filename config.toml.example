@@ -1,11 +1,6 @@
 [service]
 port = 8001
 
-[gateway]
-rate_limit_average = 10
-rate_limit_burst = 10
-rate_limit_period = "1s"
-
 [auth]
 private_key_path = "keys/private.pem"
 access_token_ttl_minutes = 15
@@ -28,9 +23,6 @@ port = 6379
 password = "change-me"
 db = 0
 key_prefix = "auth:"
-
-[registry]
-consul_url = "http://consul:8500"
 
 [tracing]
 otlp_endpoint = "http://jaeger:4318"

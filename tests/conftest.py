@@ -45,8 +45,6 @@ os.environ.update(
         "CACHE__KEY_PREFIX": "auth:",
         "AUTH__PRIVATE_KEY_PATH": str(TEST_KEY_PATH),
         "AUTH__COOKIE_SECURE": "false",
-        "SERVICE__PUBLIC_HOST": "host.docker.internal",
-        "REGISTRY__ENABLED": "false",
         "TRACING__ENABLED": "false",
     }
 )

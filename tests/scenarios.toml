@@ -89,36 +89,6 @@ layer = "unit"
 domain = "security"
 
 [[scenario]]
-id = "REGISTRY-001"
-title = "Экземпляр регистрируется с маршрутом для gateway и проверкой /ready"
-layer = "unit"
-domain = "registry"
-
-[[scenario]]
-id = "REGISTRY-002"
-title = "Лимит запросов для gateway берётся из конфига"
-layer = "unit"
-domain = "registry"
-
-[[scenario]]
-id = "REGISTRY-003"
-title = "У каждого процесса свой ID, остановка одного не снимает с регистрации другой"
-layer = "unit"
-domain = "registry"
-
-[[scenario]]
-id = "REGISTRY-005"
-title = "Без public_host экземпляр в docker-сети регистрируется по своему адресу в сети"
-layer = "unit"
-domain = "registry"
-
-[[scenario]]
-id = "REGISTRY-006"
-title = "Экземпляр регистрируется сразу passing, если готов, и critical, если зависимости недоступны"
-layer = "unit"
-domain = "registry"
-
-[[scenario]]
 id = "AUTH-REGISTER-001"
 title = "Регистрация сразу открывает сессию, почта приводится к нижнему регистру"
 layer = "integration"

@@ -2,11 +2,9 @@
         format lint lint-fix typecheck check test test-integration test-all
 
 SRC := src tests
-STACK := aiip-auth
 BUILD := BUILDX_NO_DEFAULT_ATTESTATIONS=1
 ON_HOST := DATABASE__POSTGRES_HOST=localhost CACHE__HOST=localhost \
-           REGISTRY__CONSUL_URL=http://localhost:8500 TRACING__OTLP_ENDPOINT=http://localhost:4318 \
-           SERVICE__PUBLIC_HOST=host.docker.internal
+           TRACING__OTLP_ENDPOINT=http://localhost:4318
 
 help:
 	@echo ""
@@ -14,14 +12,15 @@ help:
 	@echo "    config                    config.toml из выдачи инфры (make -C ../infra service name=auth)"
 	@echo "    keys                      сгенерировать RSA-ключ для подписи токенов"
 	@echo "    upgrade                   применить миграции"
-	@echo "    run                       запустить на хосте без Docker, инфра на localhost"
-	@echo "                              второй экземпляр: SERVICE__PORT=8002 make run"
+	@echo "    run                       запустить на хосте без Docker, инфра на localhost,"
+	@echo "                              сервис на localhost:8001 мимо Traefik"
 	@echo ""
-	@echo "  Docker Swarm (стек aiip-auth)"
-	@echo "    up [N=<число>]            собрать образ и поочерёдно выкатить N экземпляров без простоя;"
-	@echo "                              без N число экземпляров не меняется (в первый раз 1);"
-	@echo "                              миграции — только при новом образе, откат при неудаче"
-	@echo "    down                      удалить стек, все экземпляры"
+	@echo "  Docker (compose-проект aiip-auth)"
+	@echo "    up [N=<число>]            собрать образ, применить миграции и поочерёдно выкатить"
+	@echo "                              экземпляры без простоя (docker rollout), затем довести их до N;"
+	@echo "                              без N число не меняется (в первый раз 1); если новые"
+	@echo "                              не стали healthy — они удаляются, старые работают дальше"
+	@echo "    down                      остановить и удалить все экземпляры"
 	@echo "    ps                        экземпляры и их состояние"
 	@echo "    logs                      логи всех экземпляров"
 	@echo "    build                     пересобрать образ"
@@ -61,20 +60,22 @@ run:
 	$(ON_HOST) uv run python -m src
 
 up: build
-	scripts/deploy.sh $(N)
+	@docker rollout --version >/dev/null 2>&1 || { echo "нужен docker rollout: https://github.com/wowu/docker-rollout"; exit 1; }
+	docker compose run --rm --no-deps --label traefik.enable=false auth alembic upgrade head
+	docker rollout auth
+	$(if $(N),docker compose up -d --wait --no-recreate --scale auth=$(N) auth)
 
 down:
-	docker stack rm --detach=false $(STACK)
+	docker compose down
 
 ps:
-	@docker service ps $(STACK)_auth --filter desired-state=running \
-		--format 'table {{.Name}}\t{{.CurrentState}}\t{{.Error}}'
+	@docker compose ps --format 'table {{.Name}}\t{{.Status}}'
 
 build:
 	$(BUILD) docker build -q -t aiip-auth:latest . >/dev/null
 
 logs:
-	docker service logs -f --tail=100 $(STACK)_auth
+	docker compose logs -f --tail=100
 
 upgrade:
 	$(ON_HOST) uv run alembic upgrade head
