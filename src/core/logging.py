@@ -65,4 +65,3 @@ def setup_logging(level: str = "INFO") -> None:
     root.addHandler(handler)
 
     logging.getLogger("uvicorn.access").setLevel(logging.CRITICAL)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
