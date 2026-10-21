@@ -22,12 +22,12 @@ help:
 	@echo "                              через make -C ../infra forward"
 	@echo ""
 	@echo "  Kubernetes (кластер k3d aiip, namespace apps)"
-	@echo "    up [N=<число>]            собрать образ, загрузить в кластер, обновить секрет, применить"
-	@echo "                              миграции Job'ом и выкатить RollingUpdate без простоя, затем"
-	@echo "                              довести число подов до N; без N число не меняется (в первый"
-	@echo "                              раз 1); если новые поды не стали готовы — откат"
+	@echo "    up                        собрать образ, загрузить в кластер, обновить секрет, применить"
+	@echo "                              миграции Job'ом и выкатить RollingUpdate без простоя; если"
+	@echo "                              новые поды не стали готовы — откат. Число подов ведёт HPA"
+	@echo "                              по CPU, границы — в k8s/hpa.yaml"
 	@echo "    down                      удалить Deployment, Service и маршрут, секрет остаётся"
-	@echo "    ps                        поды и их состояние"
+	@echo "    ps                        поды, их нагрузка и решение автоскейлера"
 	@echo "    logs                      логи всех подов"
 	@echo "    build                     собрать образ и загрузить в кластер"
 	@echo ""
@@ -72,7 +72,11 @@ down:
 	$(KUBECTL) delete -k k8s --ignore-not-found
 
 ps:
-	$(KUBECTL) get pods -l app=auth -o wide
+	@$(KUBECTL) get hpa auth
+	@echo
+	@$(KUBECTL) top pods -l app=auth 2>/dev/null || true
+	@echo
+	@$(KUBECTL) get pods -l app=auth -o wide
 
 build:
 	$(BUILD) docker build -q -t $(IMAGE) . >/dev/null
@@ -90,7 +94,6 @@ migrate-job:
 
 deploy:
 	kubectl kustomize k8s | sed 's|aiip-auth:latest|$(IMAGE)|' | kubectl --context $(CONTEXT) apply -f -
-	$(if $(N),$(KUBECTL) scale deploy/auth --replicas=$(N))
 	@$(KUBECTL) rollout status deploy/auth --timeout=150s || { echo "новые поды не стали готовы, откатываю"; $(KUBECTL) rollout undo deploy/auth; exit 1; }
 
 logs:
