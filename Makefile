@@ -9,6 +9,7 @@ KUBECTL := kubectl --context $(CONTEXT) -n apps
 IMAGE := aiip-auth:$(shell date +%Y%m%d%H%M%S)
 ON_HOST := DATABASE__POSTGRES_HOST=localhost CACHE__HOST=localhost \
            TRACING__OTLP_ENDPOINT=http://localhost:4318
+NEED_FORWARD = @nc -z localhost 5432 2>/dev/null || { echo "инфра закрыта: запусти make -C ../infra forward в соседнем терминале"; exit 1; }
 
 help:
 	@echo ""
@@ -16,8 +17,9 @@ help:
 	@echo "    config                    config.toml из выдачи инфры (make -C ../infra service name=auth)"
 	@echo "    keys                      сгенерировать RSA-ключ для подписи токенов"
 	@echo "    upgrade                   применить миграции"
-	@echo "    run                       запустить на хосте без Docker, инфра на localhost,"
-	@echo "                              сервис на localhost:8001 мимо Traefik"
+	@echo "    run                       запустить на хосте без Docker, сервис на localhost:8001"
+	@echo "                              мимо Traefik; run, upgrade, downgrade, migrate ходят в инфру"
+	@echo "                              через make -C ../infra forward"
 	@echo ""
 	@echo "  Kubernetes (кластер k3d aiip, namespace apps)"
 	@echo "    up [N=<число>]            собрать образ, загрузить в кластер, обновить секрет, применить"
@@ -61,6 +63,7 @@ keys:
 	@echo "создан keys/private.pem"
 
 run:
+	$(NEED_FORWARD)
 	$(ON_HOST) uv run python -m src
 
 up: build secret migrate-job deploy
@@ -94,12 +97,15 @@ logs:
 	$(KUBECTL) logs -l app=auth --prefix --tail=100 -f
 
 upgrade:
+	$(NEED_FORWARD)
 	$(ON_HOST) uv run alembic upgrade head
 
 downgrade:
+	$(NEED_FORWARD)
 	$(ON_HOST) uv run alembic downgrade $(REV)
 
 migrate:
+	$(NEED_FORWARD)
 	$(ON_HOST) uv run alembic revision --autogenerate -m "$(MSG)"
 
 test:
