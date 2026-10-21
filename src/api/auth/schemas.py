@@ -5,7 +5,6 @@ from uuid import UUID
 from pydantic import AfterValidator, BaseModel, EmailStr, Field
 
 from src.config import cfg
-from src.core.db.enums import UserRole
 
 type NormalizedEmail = Annotated[EmailStr, AfterValidator(str.lower)]
 type NewPassword = Annotated[
@@ -33,7 +32,6 @@ class PasswordChangeRequest(BaseModel):
 class UserResponse(BaseModel):
     id: UUID
     email: str
-    role: UserRole
     created_at: datetime
 
 

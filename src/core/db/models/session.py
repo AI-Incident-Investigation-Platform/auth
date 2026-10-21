@@ -9,8 +9,10 @@ from src.core.db.models.base import Base
 
 class Session(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
-    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     refresh_token_hash: Mapped[str]
+    previous_refresh_token_hash: Mapped[str | None]
+    rotated_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     expires_at: Mapped[datetime]
     revoked_at: Mapped[datetime | None]

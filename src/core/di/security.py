@@ -3,13 +3,13 @@ from fastapi import Request
 
 from src.core.security.dto import CurrentUser
 from src.core.security.enums import AuthCookie
-from src.core.security.revocation import SessionRevocationList
+from src.core.security.live_sessions import LiveSessions
 from src.core.security.service import SecurityService, SessionAuthenticator
 
 
 class SecurityProvider(Provider):
     security_service = provide(SecurityService, scope=Scope.APP)
-    revocation_list = provide(SessionRevocationList, scope=Scope.APP)
+    live_sessions = provide(LiveSessions, scope=Scope.APP)
     session_authenticator = provide(SessionAuthenticator, scope=Scope.REQUEST)
 
     @provide(scope=Scope.REQUEST)

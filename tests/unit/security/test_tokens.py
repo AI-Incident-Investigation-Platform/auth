@@ -18,7 +18,6 @@ from jwt import PyJWK
 from jwt.utils import base64url_encode
 
 from src.config import cfg
-from src.core.db.enums import UserRole
 from src.core.security.dto import AccessTokenClaims
 from src.core.security.exc import (
     MalformedRefreshTokenError,
@@ -30,15 +29,16 @@ from src.core.security.service import SecurityService
 
 def claims_payload(**overrides: object) -> dict[str, object]:
     now = int(datetime.now(UTC).timestamp())
-    return {
+    payload = {
         "iss": "auth",
+        "aud": "aiip",
         "sub": str(uuid7()),
         "sid": str(uuid7()),
-        "role": "user",
         "iat": now,
         "exp": now + 300,
         **overrides,
     }
+    return {key: value for key, value in payload.items() if value is not None}
 
 
 def signing_key() -> rsa.RSAPrivateKey:
@@ -48,9 +48,9 @@ def signing_key() -> rsa.RSAPrivateKey:
 
 
 @pytest.mark.case(id="AUTH-TOKEN-001")
-def test_access_token_roundtrip_carries_user_session_and_role() -> None:
+def test_access_token_roundtrip_carries_user_and_session() -> None:
     security = SecurityService()
-    claims = AccessTokenClaims(user_id=uuid7(), session_id=uuid7(), role=UserRole.ADMIN)
+    claims = AccessTokenClaims(user_id=uuid7(), session_id=uuid7())
 
     assert security.decode_access_token(security.issue_access_token(claims)) == claims
 
@@ -61,10 +61,11 @@ def test_access_token_roundtrip_carries_user_session_and_role() -> None:
     [
         {"exp": int((datetime.now(UTC) - timedelta(seconds=1)).timestamp())},
         {"sid": "not-a-uuid"},
-        {"role": "superuser"},
         {"iss": "someone-else"},
+        {"aud": "other-system"},
+        {"aud": None},
     ],
-    ids=["expired", "bad-session-id", "unknown-role", "foreign-issuer"],
+    ids=["expired", "bad-session-id", "foreign-issuer", "foreign-audience", "no-audience"],
 )
 def test_invalid_access_token_is_rejected(overrides: dict[str, object]) -> None:
     token = jwt.encode(claims_payload(**overrides), signing_key(), algorithm="RS256")
@@ -99,12 +100,14 @@ def test_hs256_token_keyed_with_public_key_is_rejected() -> None:
 @pytest.mark.case(id="AUTH-JWKS-001")
 def test_token_verifies_with_key_published_in_jwks() -> None:
     security = SecurityService()
-    claims = AccessTokenClaims(user_id=uuid7(), session_id=uuid7(), role=UserRole.USER)
+    claims = AccessTokenClaims(user_id=uuid7(), session_id=uuid7())
     token = security.issue_access_token(claims)
     published = dataclasses.asdict(security.jwks()[0])
 
     assert jwt.get_unverified_header(token)["kid"] == published["kid"]
-    payload = jwt.decode(token, PyJWK(published).key, algorithms=["RS256"], issuer="auth")
+    payload = jwt.decode(
+        token, PyJWK(published).key, algorithms=["RS256"], issuer="auth", audience="aiip"
+    )
     assert payload["sub"] == str(claims.user_id)
     assert "d" not in published
 

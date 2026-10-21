@@ -18,7 +18,6 @@ from cryptography.hazmat.primitives.serialization import (
 from jwt.algorithms import RSAAlgorithm
 
 from src.config import cfg
-from src.core.db.enums import UserRole
 from src.core.security.dto import (
     AccessTokenClaims,
     CurrentUser,
@@ -30,12 +29,13 @@ from src.core.security.exc import (
     NotAuthenticatedError,
     SigningKeyUnavailableError,
 )
-from src.core.security.revocation import SessionRevocationList
+from src.core.security.live_sessions import LiveSessions
 
 
 class SecurityService:
     def __init__(self) -> None:
         self._password_hasher = PasswordHasher()
+        self._unknown_user_password_hash = self._password_hasher.hash(secrets.token_urlsafe(32))
         self._private_key = self._load_private_key(Path(cfg.auth.private_key_path))
         self._public_key: RSAPublicKey = self._private_key.public_key()
         self._key_id = hashlib.sha256(
@@ -45,16 +45,25 @@ class SecurityService:
     async def hash_password(self, password: str) -> str:
         return await asyncio.to_thread(self._password_hasher.hash, password)
 
-    async def verify_password(self, password_hash: str, password: str) -> bool:
+    async def verify_password(self, password_hash: str | None, password: str) -> bool:
+        """Сверяет пароль с хэшем; без хэша (нет такого пользователя) тратит то же время.
+
+        Так по времени ответа на вход нельзя узнать, зарегистрирована ли почта.
+        """
+        if password_hash is None:
+            await asyncio.to_thread(
+                self._verify_password, self._unknown_user_password_hash, password
+            )
+            return False
         return await asyncio.to_thread(self._verify_password, password_hash, password)
 
     def issue_access_token(self, claims: AccessTokenClaims) -> str:
         now = datetime.now(UTC)
         payload = {
             "iss": cfg.service.name,
+            "aud": cfg.auth.audience,
             "sub": str(claims.user_id),
             "sid": str(claims.session_id),
-            "role": claims.role.value,
             "iat": now,
             "exp": now + timedelta(minutes=cfg.auth.access_token_ttl_minutes),
         }
@@ -69,13 +78,10 @@ class SecurityService:
                 self._public_key,
                 algorithms=["RS256"],
                 issuer=cfg.service.name,
-                options={"require": ["iss", "sub", "sid", "role", "iat", "exp"]},
+                audience=cfg.auth.audience,
+                options={"require": ["iss", "aud", "sub", "sid", "iat", "exp"]},
             )
-            return AccessTokenClaims(
-                user_id=UUID(payload["sub"]),
-                session_id=UUID(payload["sid"]),
-                role=UserRole(payload["role"]),
-            )
+            return AccessTokenClaims(user_id=UUID(payload["sub"]), session_id=UUID(payload["sid"]))
         except (jwt.PyJWTError, ValueError, TypeError) as exc:
             raise NotAuthenticatedError from exc
 
@@ -133,9 +139,9 @@ class SecurityService:
 
 
 class SessionAuthenticator:
-    def __init__(self, security: SecurityService, revocations: SessionRevocationList) -> None:
+    def __init__(self, security: SecurityService, live_sessions: LiveSessions) -> None:
         self._security = security
-        self._revocations = revocations
+        self._live_sessions = live_sessions
 
     async def authenticate(
         self, authorization: str | None, cookie_token: str | None
@@ -144,9 +150,9 @@ class SessionAuthenticator:
         if not access_token:
             raise NotAuthenticatedError
         claims = self._security.decode_access_token(access_token)
-        if await self._revocations.is_revoked(claims.session_id):
+        if not await self._live_sessions.is_live(claims.session_id):
             raise NotAuthenticatedError
-        return CurrentUser(user_id=claims.user_id, session_id=claims.session_id, role=claims.role)
+        return CurrentUser(user_id=claims.user_id, session_id=claims.session_id)
 
     @staticmethod
     def _bearer_token(authorization: str | None) -> str | None:

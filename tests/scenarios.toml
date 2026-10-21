@@ -36,13 +36,13 @@ domain = "config"
 
 [[scenario]]
 id = "AUTH-TOKEN-001"
-title = "Access-токен переносит пользователя, сессию и роль"
+title = "Access-токен переносит пользователя и сессию, ролей в нём нет"
 layer = "unit"
 domain = "security"
 
 [[scenario]]
 id = "AUTH-TOKEN-002"
-title = "Истёкший или с неверными claims access-токен отклоняется"
+title = "Истёкший, чужой по издателю или аудитории, с битыми claims access-токен отклоняется"
 layer = "unit"
 domain = "security"
 
@@ -108,7 +108,7 @@ domain = "api"
 
 [[scenario]]
 id = "AUTH-REGISTER-001"
-title = "Регистрация сразу открывает сессию, почта приводится к нижнему регистру"
+title = "Регистрация сразу открывает сессию, почта приводится к нижнему регистру, в ответе нет ролей"
 layer = "integration"
 domain = "auth"
 
@@ -137,12 +137,6 @@ layer = "integration"
 domain = "auth"
 
 [[scenario]]
-id = "AUTH-LOGIN-003"
-title = "О деактивации сообщается только после верного пароля"
-layer = "integration"
-domain = "auth"
-
-[[scenario]]
 id = "AUTH-LOGIN-004"
 title = "Неверный пароль короче минимума отклоняется как неверные данные, а не как ошибка формы"
 layer = "integration"
@@ -156,7 +150,7 @@ domain = "auth"
 
 [[scenario]]
 id = "AUTH-SESSION-002"
-title = "Повторный refresh-токен сразу отзывает сессию"
+title = "Предыдущий refresh-токен после окна соседней вкладки — кража: сессия отзывается сразу"
 layer = "integration"
 domain = "auth"
 
@@ -179,14 +173,8 @@ layer = "integration"
 domain = "auth"
 
 [[scenario]]
-id = "AUTH-SESSION-006"
-title = "Деактивированный аккаунт теряет доступ к /me и смене пароля при живом токене"
-layer = "integration"
-domain = "auth"
-
-[[scenario]]
 id = "AUTH-SESSION-007"
-title = "Удалённый аккаунт с живым токеном получает отдельную ошибку, а не «неверный пароль»"
+title = "Удалённый аккаунт с живым токеном получает отдельную ошибку, его сессии больше не обновляются"
 layer = "integration"
 domain = "auth"
 
@@ -210,7 +198,7 @@ domain = "auth"
 
 [[scenario]]
 id = "AUTH-PASSWORD-002"
-title = "Смена пароля сразу отзывает остальные сессии и оставляет текущую"
+title = "Смена пароля сразу отзывает остальные сессии и их refresh, текущая остаётся"
 layer = "integration"
 domain = "auth"
 
@@ -225,3 +213,51 @@ id = "HEALTH-001"
 title = "/ready проверяет БД и кэш"
 layer = "integration"
 domain = "health"
+
+[[scenario]]
+id = "AUTH-TOKEN-007"
+title = "Недоступный кэш не пропускает запрос: живость сессии не подтверждена — отказ"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-SESSION-008"
+title = "Соседняя вкладка с только что ротированным refresh получает новый access, сессия жива"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-SESSION-009"
+title = "Refresh-токен старше предыдущего — кража даже внутри окна соседней вкладки"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-SESSION-010"
+title = "Потерянный в кэше пропуск сессии восстанавливается refresh'ем, а не выходом"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-SESSION-011"
+title = "Сессии разных устройств независимы: выход на одном не трогает другое"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-SESSION-012"
+title = "Refresh с неизвестной сессией отклоняется"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-COOKIE-001"
+title = "Куки HttpOnly и SameSite=Strict, access уходит во все /api, refresh — только в auth"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGOUT-003"
+title = "Выход с id чужой сессии без её секрета ничего не отзывает"
+layer = "integration"
+domain = "auth"

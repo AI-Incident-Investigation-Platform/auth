@@ -60,8 +60,11 @@ class Tracing(BaseModel):
 
 class Auth(BaseModel):
     private_key_path: str = ""
+    audience: str = "aiip"
     access_token_ttl_minutes: int = 15
     refresh_token_ttl_days: int = 30
+    refresh_reuse_grace_seconds: int = 10
+    access_cookie_path: str = "/api"
     cookie_secure: bool = True
     password_min_length: int = 8
     password_max_length: int = 128

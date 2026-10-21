@@ -10,7 +10,7 @@ async def test_registration_signs_in_with_normalized_email(client: AsyncClient) 
 
     assert response.status_code == 201
     assert response.json()["email"] == "new.user@example.com"
-    assert response.json()["role"] == "user"
+    assert set(response.json()) == {"id", "email", "created_at"}
     assert {"access_token", "refresh_token"} <= set(client.cookies.keys())
     assert (await client.get("/api/auth/me")).status_code == 200
 

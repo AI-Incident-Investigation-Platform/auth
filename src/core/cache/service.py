@@ -21,6 +21,14 @@ class CacheService:
         except RedisError as exc:
             raise CacheUnavailableError from exc
 
+    async def delete(self, keys: Collection[str]) -> None:
+        if not keys:
+            return
+        try:
+            await self._client.connection().delete(*keys)
+        except RedisError as exc:
+            raise CacheUnavailableError from exc
+
     async def exists(self, key: str) -> bool:
         try:
             return bool(await self._client.connection().exists(key))

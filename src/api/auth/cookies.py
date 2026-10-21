@@ -10,11 +10,13 @@ def set_auth_cookies(response: Response, tokens: IssuedTokens) -> None:
         AuthCookie.ACCESS_TOKEN,
         tokens.access_token,
         max_age=cfg.auth.access_token_ttl_minutes * 60,
-        path="/",
+        path=cfg.auth.access_cookie_path,
         secure=cfg.auth.cookie_secure,
         httponly=True,
-        samesite="lax",
+        samesite="strict",
     )
+    if tokens.refresh_token is None:
+        return
     response.set_cookie(
         AuthCookie.REFRESH_TOKEN,
         tokens.refresh_token,
@@ -22,22 +24,22 @@ def set_auth_cookies(response: Response, tokens: IssuedTokens) -> None:
         path=cfg.service.route_prefix,
         secure=cfg.auth.cookie_secure,
         httponly=True,
-        samesite="lax",
+        samesite="strict",
     )
 
 
 def clear_auth_cookies(response: Response) -> None:
     response.delete_cookie(
         AuthCookie.ACCESS_TOKEN,
-        path="/",
+        path=cfg.auth.access_cookie_path,
         secure=cfg.auth.cookie_secure,
         httponly=True,
-        samesite="lax",
+        samesite="strict",
     )
     response.delete_cookie(
         AuthCookie.REFRESH_TOKEN,
         path=cfg.service.route_prefix,
         secure=cfg.auth.cookie_secure,
         httponly=True,
-        samesite="lax",
+        samesite="strict",
     )

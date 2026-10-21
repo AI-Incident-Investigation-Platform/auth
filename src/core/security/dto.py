@@ -1,14 +1,11 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from src.core.db.enums import UserRole
-
 
 @dataclass(frozen=True)
 class AccessTokenClaims:
     user_id: UUID
     session_id: UUID
-    role: UserRole
 
 
 @dataclass(frozen=True)
@@ -24,7 +21,6 @@ class RefreshToken:
 class CurrentUser:
     user_id: UUID
     session_id: UUID
-    role: UserRole
 
 
 @dataclass(frozen=True)

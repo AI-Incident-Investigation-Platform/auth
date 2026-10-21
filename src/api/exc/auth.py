@@ -11,11 +11,6 @@ class InvalidCredentialsError(UnauthenticatedError):
     message = "Неверный email или пароль"
 
 
-class AccountDeactivatedError(UnauthenticatedError):
-    code = "auth.account_deactivated"
-    message = "Аккаунт деактивирован"
-
-
 class InvalidRefreshTokenError(UnauthenticatedError):
     code = "auth.invalid_refresh_token"
     message = "Сессия недействительна, войдите заново"
