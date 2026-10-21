@@ -35,6 +35,8 @@ from src.core.security.live_sessions import LiveSessions
 class SecurityService:
     def __init__(self) -> None:
         self._password_hasher = PasswordHasher()
+        # argon2 берёт ~64 МБ на хэш: без очереди всплеск входов выводит под за лимит памяти.
+        self._hashing_slots = asyncio.Semaphore(cfg.auth.password_hashing_concurrency)
         self._unknown_user_password_hash = self._password_hasher.hash(secrets.token_urlsafe(32))
         self._private_key = self._load_private_key(Path(cfg.auth.private_key_path))
         self._public_key: RSAPublicKey = self._private_key.public_key()
@@ -43,19 +45,21 @@ class SecurityService:
         ).hexdigest()[:16]
 
     async def hash_password(self, password: str) -> str:
-        return await asyncio.to_thread(self._password_hasher.hash, password)
+        async with self._hashing_slots:
+            return await asyncio.to_thread(self._password_hasher.hash, password)
 
     async def verify_password(self, password_hash: str | None, password: str) -> bool:
         """Сверяет пароль с хэшем; без хэша (нет такого пользователя) тратит то же время.
 
         Так по времени ответа на вход нельзя узнать, зарегистрирована ли почта.
         """
-        if password_hash is None:
-            await asyncio.to_thread(
-                self._verify_password, self._unknown_user_password_hash, password
-            )
-            return False
-        return await asyncio.to_thread(self._verify_password, password_hash, password)
+        async with self._hashing_slots:
+            if password_hash is None:
+                await asyncio.to_thread(
+                    self._verify_password, self._unknown_user_password_hash, password
+                )
+                return False
+            return await asyncio.to_thread(self._verify_password, password_hash, password)
 
     def issue_access_token(self, claims: AccessTokenClaims) -> str:
         now = datetime.now(UTC)

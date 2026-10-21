@@ -1,7 +1,10 @@
+import asyncio
 import dataclasses
 import hashlib
 import hmac
 import json
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid7
@@ -152,3 +155,28 @@ def test_missing_signing_key_stops_service(monkeypatch: pytest.MonkeyPatch) -> N
 
     with pytest.raises(SigningKeyUnavailableError):
         SecurityService()
+
+
+@pytest.mark.case(id="AUTH-PASSWORD-004")
+async def test_concurrent_password_hashing_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    security = SecurityService()
+    running = 0
+    peak = 0
+    lock = threading.Lock()
+
+    class SlowHasher:
+        def hash(self, password: str) -> str:
+            nonlocal running, peak
+            with lock:
+                running += 1
+                peak = max(peak, running)
+            time.sleep(0.05)
+            with lock:
+                running -= 1
+            return "$argon2id$stub"
+
+    monkeypatch.setattr(security, "_password_hasher", SlowHasher())
+
+    await asyncio.gather(*(security.hash_password("password-1") for _ in range(8)))
+
+    assert peak == cfg.auth.password_hashing_concurrency

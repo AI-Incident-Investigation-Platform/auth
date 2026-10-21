@@ -68,6 +68,7 @@ class Auth(BaseModel):
     cookie_secure: bool = True
     password_min_length: int = 8
     password_max_length: int = 128
+    password_hashing_concurrency: int = 2
 
 
 class Logging(BaseModel):

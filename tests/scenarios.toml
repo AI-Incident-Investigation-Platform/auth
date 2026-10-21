@@ -261,3 +261,9 @@ id = "AUTH-LOGOUT-003"
 title = "Выход с id чужой сессии без её секрета ничего не отзывает"
 layer = "integration"
 domain = "auth"
+
+[[scenario]]
+id = "AUTH-PASSWORD-004"
+title = "Одновременно считается не больше заданного числа хэшей пароля: всплеск входов не выводит под за лимит памяти"
+layer = "unit"
+domain = "security"
