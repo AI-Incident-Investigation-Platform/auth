@@ -1,8 +1,12 @@
-.PHONY: help config keys run up down ps build logs upgrade downgrade migrate \
+.PHONY: help config keys run up down ps build secret migrate-job deploy logs upgrade downgrade migrate \
         format lint lint-fix typecheck check test test-integration test-all
 
 SRC := src tests
 BUILD := BUILDX_NO_DEFAULT_ATTESTATIONS=1
+CLUSTER := aiip
+CONTEXT := k3d-$(CLUSTER)
+KUBECTL := kubectl --context $(CONTEXT) -n apps
+IMAGE := aiip-auth:$(shell date +%Y%m%d%H%M%S)
 ON_HOST := DATABASE__POSTGRES_HOST=localhost CACHE__HOST=localhost \
            TRACING__OTLP_ENDPOINT=http://localhost:4318
 
@@ -15,15 +19,15 @@ help:
 	@echo "    run                       запустить на хосте без Docker, инфра на localhost,"
 	@echo "                              сервис на localhost:8001 мимо Traefik"
 	@echo ""
-	@echo "  Docker (compose-проект aiip-auth)"
-	@echo "    up [N=<число>]            собрать образ, применить миграции и поочерёдно выкатить"
-	@echo "                              экземпляры без простоя (docker rollout), затем довести их до N;"
-	@echo "                              без N число не меняется (в первый раз 1); если новые"
-	@echo "                              не стали healthy — они удаляются, старые работают дальше"
-	@echo "    down                      остановить и удалить все экземпляры"
-	@echo "    ps                        экземпляры и их состояние"
-	@echo "    logs                      логи всех экземпляров"
-	@echo "    build                     пересобрать образ"
+	@echo "  Kubernetes (кластер k3d aiip, namespace apps)"
+	@echo "    up [N=<число>]            собрать образ, загрузить в кластер, обновить секрет, применить"
+	@echo "                              миграции Job'ом и выкатить RollingUpdate без простоя, затем"
+	@echo "                              довести число подов до N; без N число не меняется (в первый"
+	@echo "                              раз 1); если новые поды не стали готовы — откат"
+	@echo "    down                      удалить Deployment, Service и маршрут, секрет остаётся"
+	@echo "    ps                        поды и их состояние"
+	@echo "    logs                      логи всех подов"
+	@echo "    build                     собрать образ и загрузить в кластер"
 	@echo ""
 	@echo "  Миграции"
 	@echo "    upgrade                   применить все миграции"
@@ -59,23 +63,35 @@ keys:
 run:
 	$(ON_HOST) uv run python -m src
 
-up: build
-	@docker rollout --version >/dev/null 2>&1 || { echo "нужен docker rollout: https://github.com/wowu/docker-rollout"; exit 1; }
-	docker compose run --rm --no-deps --label traefik.enable=false auth alembic upgrade head
-	docker rollout auth
-	$(if $(N),docker compose up -d --wait --no-recreate --scale auth=$(N) auth)
+up: build secret migrate-job deploy
 
 down:
-	docker compose down
+	$(KUBECTL) delete -k k8s --ignore-not-found
 
 ps:
-	@docker compose ps --format 'table {{.Name}}\t{{.Status}}'
+	$(KUBECTL) get pods -l app=auth -o wide
 
 build:
-	$(BUILD) docker build -q -t aiip-auth:latest . >/dev/null
+	$(BUILD) docker build -q -t $(IMAGE) . >/dev/null
+	k3d image import $(IMAGE) -c $(CLUSTER)
+
+secret:
+	@test -f config.toml -a -f keys/private.pem || { echo "нужны config.toml и keys/private.pem: make config keys"; exit 1; }
+	@$(KUBECTL) create secret generic auth --from-file=config.toml --from-file=private.pem=keys/private.pem \
+		--dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
+
+migrate-job:
+	@$(KUBECTL) delete job auth-migrate --ignore-not-found >/dev/null
+	@sed 's|aiip-auth:latest|$(IMAGE)|' k8s/migrate.yaml | $(KUBECTL) apply -f - >/dev/null
+	@$(KUBECTL) wait --for=condition=complete job/auth-migrate --timeout=120s || { $(KUBECTL) logs job/auth-migrate; exit 1; }
+
+deploy:
+	kubectl kustomize k8s | sed 's|aiip-auth:latest|$(IMAGE)|' | kubectl --context $(CONTEXT) apply -f -
+	$(if $(N),$(KUBECTL) scale deploy/auth --replicas=$(N))
+	@$(KUBECTL) rollout status deploy/auth --timeout=150s || { echo "новые поды не стали готовы, откатываю"; $(KUBECTL) rollout undo deploy/auth; exit 1; }
 
 logs:
-	docker compose logs -f --tail=100
+	$(KUBECTL) logs -l app=auth --prefix --tail=100 -f
 
 upgrade:
 	$(ON_HOST) uv run alembic upgrade head
