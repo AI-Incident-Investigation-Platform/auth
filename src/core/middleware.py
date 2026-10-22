@@ -4,6 +4,7 @@ import time
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from src.core.context import REQUEST_ID_HEADER, get_trace_id
+from src.core.metrics import UNOBSERVED_PATHS
 
 log = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ class RequestLoggingMiddleware:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope["path"] in {"/health", "/ready"}:
+        if scope["type"] != "http" or scope["path"] in UNOBSERVED_PATHS:
             await self.app(scope, receive, send)
             return
 

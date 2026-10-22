@@ -267,3 +267,9 @@ id = "AUTH-PASSWORD-004"
 title = "Одновременно считается не больше заданного числа хэшей пароля: всплеск входов не выводит под за лимит памяти"
 layer = "unit"
 domain = "security"
+
+[[scenario]]
+id = "METRICS-001"
+title = "/metrics считает запросы по шаблону маршрута и ошибки по коду, без health и самого /metrics"
+layer = "integration"
+domain = "metrics"

@@ -25,4 +25,4 @@ db = 0
 key_prefix = "auth:"
 
 [tracing]
-otlp_endpoint = "http://jaeger:4318"
+otlp_endpoint = "http://alloy.infra:4318"

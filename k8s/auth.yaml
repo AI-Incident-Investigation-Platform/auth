@@ -18,6 +18,10 @@ spec:
     metadata:
       labels:
         app: auth
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8001"
+        prometheus.io/path: /metrics
     spec:
       terminationGracePeriodSeconds: 15
       securityContext:

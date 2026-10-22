@@ -27,6 +27,7 @@ from src.core.errors import (
     RuleViolationError,
     UnauthenticatedError,
 )
+from src.core.metrics import APP_ERRORS
 
 log = logging.getLogger(__name__)
 
@@ -145,6 +146,9 @@ class ApiErrorHandler:
         exc: Exception,
         details: dict[str, object] | None = None,
     ) -> None:
+        APP_ERRORS.labels(
+            report.layer.value, report.code, str(status.value), str(report.untranslated).lower()
+        ).inc()
         error = {**report.to_log(), "status": status.value}
         if details:
             error["details"] = details
