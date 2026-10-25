@@ -11,6 +11,7 @@ from uuid import uuid7
 
 import jwt
 import pytest
+from argon2 import PasswordHasher
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
@@ -25,6 +26,7 @@ from src.core.security.dto import AccessTokenClaims
 from src.core.security.exc import (
     MalformedRefreshTokenError,
     NotAuthenticatedError,
+    PasswordHashingOverloadedError,
     SigningKeyUnavailableError,
 )
 from src.core.security.service import SecurityService
@@ -158,7 +160,11 @@ def test_missing_signing_key_stops_service(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 @pytest.mark.case(id="AUTH-PASSWORD-004")
-async def test_concurrent_password_hashing_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("concurrency", [1, 2])
+async def test_concurrent_password_hashing_is_bounded(
+    monkeypatch: pytest.MonkeyPatch, concurrency: int
+) -> None:
+    monkeypatch.setattr(cfg.auth, "password_hashing_concurrency", concurrency)
     security = SecurityService()
     running = 0
     peak = 0
@@ -179,4 +185,71 @@ async def test_concurrent_password_hashing_is_bounded(monkeypatch: pytest.Monkey
 
     await asyncio.gather(*(security.hash_password("password-1") for _ in range(8)))
 
-    assert peak == cfg.auth.password_hashing_concurrency
+    assert peak == concurrency
+
+
+@pytest.mark.case(id="AUTH-PASSWORD-007")
+async def test_password_queue_over_limit_is_rejected_at_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cfg.auth, "password_hashing_concurrency", 1)
+    monkeypatch.setattr(cfg.auth, "password_hashing_queue_limit", 2)
+    security = SecurityService()
+    release = threading.Event()
+
+    def blocked_hash(
+        self: PasswordHasher, password: str | bytes, *, salt: bytes | None = None
+    ) -> str:
+        release.wait(5)
+        return "$argon2id$stub"
+
+    monkeypatch.setattr(PasswordHasher, "hash", blocked_hash)
+
+    accepted = [asyncio.create_task(security.hash_password("password-1")) for _ in range(3)]
+    await asyncio.sleep(0.05)
+    with pytest.raises(PasswordHashingOverloadedError):
+        await security.hash_password("password-1")
+    release.set()
+    await asyncio.gather(*accepted)
+
+    assert await security.hash_password("password-1") == "$argon2id$stub"
+
+
+@pytest.mark.case(id="AUTH-PASSWORD-008")
+async def test_cancelled_request_keeps_hashing_slot_until_argon2_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cfg.auth, "password_hashing_concurrency", 1)
+    security = SecurityService()
+    release = threading.Event()
+    entered = threading.Event()
+    running = 0
+    peak = 0
+    lock = threading.Lock()
+
+    def blocked_hash(
+        self: PasswordHasher, password: str | bytes, *, salt: bytes | None = None
+    ) -> str:
+        nonlocal running, peak
+        with lock:
+            running += 1
+            peak = max(peak, running)
+        entered.set()
+        release.wait(5)
+        with lock:
+            running -= 1
+        return "$argon2id$stub"
+
+    monkeypatch.setattr(PasswordHasher, "hash", blocked_hash)
+
+    cancelled = asyncio.create_task(security.hash_password("password-1"))
+    assert await asyncio.to_thread(entered.wait, 5)
+    cancelled.cancel()
+    follower = asyncio.create_task(security.hash_password("password-1"))
+    await asyncio.sleep(0.05)
+    started_while_busy = peak
+    release.set()
+    await follower
+
+    assert started_while_busy == 1
+    assert peak == 1

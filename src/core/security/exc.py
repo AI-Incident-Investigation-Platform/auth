@@ -1,4 +1,4 @@
-from src.core.errors import CoreError, InternalError, UnauthenticatedError
+from src.core.errors import CoreError, InternalError, OverloadedError, UnauthenticatedError
 
 
 class NotAuthenticatedError(UnauthenticatedError):
@@ -14,3 +14,8 @@ class MalformedRefreshTokenError(CoreError):
 class SigningKeyUnavailableError(InternalError):
     code = "security.signing_key_unavailable"
     message = "Ключ подписи токенов не найден или повреждён"
+
+
+class PasswordHashingOverloadedError(OverloadedError):
+    code = "security.password_hashing_overloaded"
+    message = "Сервис перегружен, повторите попытку через несколько секунд"

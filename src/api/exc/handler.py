@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.api.exc.auth import RefreshTokenReusedError
+from src.config import cfg
 from src.core.context import REQUEST_ID_HEADER, get_trace_id, log_context
 from src.core.errors import (
     AppError,
@@ -25,6 +26,7 @@ from src.core.errors import (
     IntegrationUnavailableError,
     InternalError,
     NotFoundError,
+    OverloadedError,
     PersistenceUnavailableError,
     RuleViolationError,
     UnauthenticatedError,
@@ -51,6 +53,13 @@ class ApiErrorHandler:
         status = ApiErrorHandler._status_for(exc)
         ApiErrorHandler._record(request, report, status, ApiErrorHandler._level_for(exc), exc)
 
+        if isinstance(exc, OverloadedError):
+            return ApiErrorHandler._respond(
+                status,
+                exc.code,
+                exc.message,
+                headers={"Retry-After": str(cfg.service.overload_retry_after_seconds)},
+            )
         if isinstance(
             exc, DomainError | UnauthenticatedError | IntegrationError | PersistenceUnavailableError
         ):
@@ -126,7 +135,7 @@ class ApiErrorHandler:
                 return HTTPStatus.BAD_REQUEST
             case IntegrationTimeoutError():
                 return HTTPStatus.GATEWAY_TIMEOUT
-            case IntegrationUnavailableError() | PersistenceUnavailableError():
+            case IntegrationUnavailableError() | PersistenceUnavailableError() | OverloadedError():
                 return HTTPStatus.SERVICE_UNAVAILABLE
             case IntegrationBadResponseError() | IntegrationError():
                 return HTTPStatus.BAD_GATEWAY
@@ -140,7 +149,7 @@ class ApiErrorHandler:
                 return logging.WARNING
             case DomainError() | UnauthenticatedError():
                 return logging.INFO
-            case IntegrationError() | PersistenceUnavailableError():
+            case IntegrationError() | PersistenceUnavailableError() | OverloadedError():
                 return logging.WARNING
             case _:
                 return logging.ERROR

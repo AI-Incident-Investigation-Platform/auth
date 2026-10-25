@@ -70,6 +70,12 @@ class PersistenceConflictError(PersistenceError):
     pass
 
 
+class OverloadedError(AppError):
+    """Сервис сейчас не принимает работу, клиент повторяет запрос позже."""
+
+    layer = ErrorLayer.CORE
+
+
 class InternalError(AppError):
     code = "internal_error"
     message = "Внутренняя ошибка сервера"

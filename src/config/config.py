@@ -1,7 +1,7 @@
 from pathlib import Path
 from urllib.parse import quote
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_settings import (
     BaseSettings,
     EnvSettingsSource,
@@ -23,6 +23,7 @@ class Service(BaseModel):
     port: int = 8001
     bind_host: str = "127.0.0.1"
     route_prefix: str = "/api/auth"
+    overload_retry_after_seconds: int = Field(default=2, ge=1)
 
 
 class Database(BaseModel):
@@ -68,7 +69,12 @@ class Auth(BaseModel):
     cookie_secure: bool = True
     password_min_length: int = 8
     password_max_length: int = 128
-    password_hashing_concurrency: int = 2
+    password_hashing_concurrency: int = Field(default=2, ge=1)
+    password_hashing_queue_limit: int = Field(default=20, ge=0)
+    # OWASP: 19 МиБ, 2 прохода, 1 поток — хэш в одном ядре, CPU-лимит не замораживает event loop.
+    password_hash_memory_kib: int = Field(default=19456, ge=8192)
+    password_hash_time_cost: int = Field(default=2, ge=1)
+    password_hash_parallelism: int = Field(default=1, ge=1)
 
 
 class Logging(BaseModel):

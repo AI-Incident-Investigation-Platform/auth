@@ -315,3 +315,33 @@ id = "API-LOG-005"
 title = "Медленный успешный запрос виден на WARNING"
 layer = "unit"
 domain = "api"
+
+[[scenario]]
+id = "API-ERROR-004"
+title = "Перегрузка — 503 со своим code и заголовком Retry-After"
+layer = "unit"
+domain = "api"
+
+[[scenario]]
+id = "AUTH-PASSWORD-007"
+title = "Очередь на хэширование сверх предела сразу отказывает перегрузкой, освободившись — принимает снова"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-PASSWORD-008"
+title = "Отменённый запрос не освобождает слот хэширования, пока Argon2 не закончил"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-PASSWORD-005"
+title = "Трейс отделяет ожидание слота от Argon2, сохраняет контекст потока и не содержит пароль или хэш"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-PASSWORD-006"
+title = "Метрики учитывают неверный пароль и неизвестного пользователя, счётчики активных операций возвращаются в ноль"
+layer = "unit"
+domain = "security"

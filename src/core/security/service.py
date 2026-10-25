@@ -1,7 +1,12 @@
 import asyncio
+import contextvars
+import functools
 import hashlib
 import hmac
 import secrets
+import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -16,6 +21,7 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key,
 )
 from jwt.algorithms import RSAAlgorithm
+from opentelemetry import trace
 
 from src.config import cfg
 from src.core.context import bind_log_identity
@@ -28,16 +34,25 @@ from src.core.security.dto import (
 from src.core.security.exc import (
     MalformedRefreshTokenError,
     NotAuthenticatedError,
+    PasswordHashingOverloadedError,
     SigningKeyUnavailableError,
 )
 from src.core.security.live_sessions import LiveSessions
+from src.core.security.metrics import PASSWORD_DURATION, PASSWORD_OPERATIONS
 
 
 class SecurityService:
     def __init__(self) -> None:
-        self._password_hasher = PasswordHasher()
-        # argon2 берёт ~64 МБ на хэш: без очереди всплеск входов выводит под за лимит памяти.
+        self._tracer = trace.get_tracer(__name__)
+        self._password_hasher = PasswordHasher(
+            memory_cost=cfg.auth.password_hash_memory_kib,
+            time_cost=cfg.auth.password_hash_time_cost,
+            parallelism=cfg.auth.password_hash_parallelism,
+        )
+        # хэш argon2 берёт memory_kib памяти: без очереди всплеск входов выводит под за лимит.
         self._hashing_slots = asyncio.Semaphore(cfg.auth.password_hashing_concurrency)
+        # длинная очередь означает ответ через секунды: отказ сразу честнее и бережёт под.
+        self._hashing_waiters = 0
         self._unknown_user_password_hash = self._password_hasher.hash(secrets.token_urlsafe(32))
         self._private_key = self._load_private_key(Path(cfg.auth.private_key_path))
         self._public_key: RSAPublicKey = self._private_key.public_key()
@@ -46,21 +61,21 @@ class SecurityService:
         ).hexdigest()[:16]
 
     async def hash_password(self, password: str) -> str:
-        async with self._hashing_slots:
-            return await asyncio.to_thread(self._password_hasher.hash, password)
+        return await self._run_in_hashing_slot("hash", self._hash_password, password)
 
     async def verify_password(self, password_hash: str | None, password: str) -> bool:
         """Сверяет пароль с хэшем; без хэша (нет такого пользователя) тратит то же время.
 
         Так по времени ответа на вход нельзя узнать, зарегистрирована ли почта.
         """
-        async with self._hashing_slots:
-            if password_hash is None:
-                await asyncio.to_thread(
-                    self._verify_password, self._unknown_user_password_hash, password
-                )
-                return False
-            return await asyncio.to_thread(self._verify_password, password_hash, password)
+        if password_hash is None:
+            await self._run_in_hashing_slot(
+                "verify", self._verify_password, self._unknown_user_password_hash, password
+            )
+            return False
+        return await self._run_in_hashing_slot(
+            "verify", self._verify_password, password_hash, password
+        )
 
     def issue_access_token(self, claims: AccessTokenClaims) -> str:
         now = datetime.now(UTC)
@@ -126,11 +141,67 @@ class SecurityService:
     def verify_token(value: str, token_hash: str) -> bool:
         return hmac.compare_digest(SecurityService.hash_token(value), token_hash)
 
-    def _verify_password(self, password_hash: str, password: str) -> bool:
+    async def _run_in_hashing_slot[T](
+        self, operation: str, func: Callable[..., T], *args: object
+    ) -> T:
+        started = time.perf_counter()
+        with self._tracer.start_as_current_span(f"auth.password.{operation}"):
+            try:
+                if (
+                    self._hashing_slots.locked()
+                    and self._hashing_waiters >= cfg.auth.password_hashing_queue_limit
+                ):
+                    raise PasswordHashingOverloadedError(
+                        {"operation": operation, "waiting": self._hashing_waiters}
+                    )
+                waiting_since = time.perf_counter()
+                self._hashing_waiters += 1
+                PASSWORD_OPERATIONS.labels(operation, "waiting").inc()
+                try:
+                    with self._tracer.start_as_current_span("auth.password.wait"):
+                        await self._hashing_slots.acquire()
+                finally:
+                    self._hashing_waiters -= 1
+                    PASSWORD_OPERATIONS.labels(operation, "waiting").dec()
+                    PASSWORD_DURATION.labels(operation, "wait").observe(
+                        time.perf_counter() - waiting_since
+                    )
+                # Слот принадлежит работе в потоке: отменённый запрос не освобождает его, пока
+                # Argon2 считает, иначе отмены запускают хэши сверх лимита.
+                try:
+                    work = asyncio.get_running_loop().run_in_executor(
+                        None, functools.partial(contextvars.copy_context().run, func, *args)
+                    )
+                except BaseException:
+                    self._hashing_slots.release()
+                    raise
+                work.add_done_callback(lambda _: self._hashing_slots.release())
+                return await asyncio.shield(work)
+            finally:
+                PASSWORD_DURATION.labels(operation, "total").observe(time.perf_counter() - started)
+
+    @contextmanager
+    def _password_execution(self, operation: str) -> Iterator[None]:
+        # Измеряем внутри потока: очередь executor и возобновление event loop сюда не входят.
+        started = time.perf_counter()
+        PASSWORD_OPERATIONS.labels(operation, "running").inc()
         try:
-            return self._password_hasher.verify(password_hash, password)
-        except VerificationError, InvalidHashError:
-            return False
+            with self._tracer.start_as_current_span("auth.password.execute"):
+                yield
+        finally:
+            PASSWORD_DURATION.labels(operation, "execute").observe(time.perf_counter() - started)
+            PASSWORD_OPERATIONS.labels(operation, "running").dec()
+
+    def _hash_password(self, password: str) -> str:
+        with self._password_execution("hash"):
+            return self._password_hasher.hash(password)
+
+    def _verify_password(self, password_hash: str, password: str) -> bool:
+        with self._password_execution("verify"):
+            try:
+                return self._password_hasher.verify(password_hash, password)
+            except VerificationError, InvalidHashError:
+                return False
 
     @staticmethod
     def _load_private_key(path: Path) -> RSAPrivateKey:
