@@ -1,7 +1,10 @@
+import asyncio
+
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 
-from tests.support.auth import Account, error_code, register
+from tests.support.auth import Account, client_with_cookies, error_code, register
 
 
 @pytest.mark.case(id="AUTH-REGISTER-001")
@@ -39,3 +42,15 @@ async def test_registration_validates_input(client: AsyncClient, body: dict[str,
 
     assert response.status_code == 422
     assert error_code(response) == "request.invalid"
+
+
+@pytest.mark.case(id="AUTH-REGISTER-004")
+async def test_concurrent_registration_creates_one_account(app: FastAPI) -> None:
+    async with client_with_cookies(app, {}) as first, client_with_cookies(app, {}) as second:
+        responses = await asyncio.gather(
+            register(first, "concurrent@example.com", "password-1"),
+            register(second, "concurrent@example.com", "password-1"),
+        )
+    assert sorted(response.status_code for response in responses) == [201, 409]
+    rejected = next(response for response in responses if response.status_code == 409)
+    assert error_code(rejected) == "auth.email_already_registered"

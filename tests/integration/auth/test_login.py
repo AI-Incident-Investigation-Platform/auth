@@ -1,7 +1,14 @@
-import pytest
-from httpx import AsyncClient
+import asyncio
+import threading
 
-from tests.support.auth import Account, error_code, login
+import pytest
+from argon2 import PasswordHasher
+from fastapi import FastAPI
+from httpx import AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.support.auth import Account, client_with_cookies, error_code, login
 
 
 @pytest.mark.case(id="AUTH-LOGIN-001")
@@ -35,3 +42,57 @@ async def test_short_wrong_password_is_rejected_as_invalid_credentials(
 
     assert response.status_code == 401
     assert error_code(response) == "auth.invalid_credentials"
+
+
+@pytest.mark.case(id="AUTH-LOGIN-005")
+async def test_password_check_releases_db_and_rejects_password_changed_during_login(
+    app: FastAPI,
+    client: AsyncClient,
+    account: Account,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    lock = threading.Lock()
+    paused = False
+    original_verify = PasswordHasher.verify
+
+    def paused_verify(self: PasswordHasher, encoded: str | bytes, password: str | bytes) -> bool:
+        nonlocal paused
+        with lock:
+            first = not paused
+            paused = True
+        if first:
+            entered.set()
+            if not release.wait(5):
+                raise TimeoutError("Тест не освободил проверку пароля")
+        return original_verify(self, encoded, password)
+
+    monkeypatch.setattr(PasswordHasher, "verify", paused_verify)
+    async with client_with_cookies(app, {}) as signing_in:
+        pending = asyncio.create_task(login(signing_in, account.email, account.password))
+        try:
+            assert await asyncio.to_thread(entered.wait, 2)
+            idle_transactions = await db.scalar(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() "
+                    "AND pid <> pg_backend_pid() AND state='idle in transaction'"
+                )
+            )
+            assert idle_transactions == 0
+            changed = await asyncio.wait_for(
+                client.post(
+                    "/api/auth/password",
+                    json={"current_password": account.password, "new_password": "password-2"},
+                ),
+                timeout=3,
+            )
+            assert changed.status_code == 204
+        finally:
+            release.set()
+            response = await pending
+
+    assert response.status_code == 401
+    assert error_code(response) == "auth.invalid_credentials"
+    assert (await login(client, account.email, "password-2")).status_code == 200

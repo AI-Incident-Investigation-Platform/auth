@@ -43,6 +43,7 @@ class AuthService:
     async def register(self, email: str, password: str, user_agent: str | None) -> SignedIn:
         if await self._uow.users.get_by_email(email):
             raise EmailAlreadyRegisteredError
+        await self._uow.rollback()
 
         user = User(
             id=uuid7(), email=email, password_hash=await self._security.hash_password(password)
@@ -59,13 +60,17 @@ class AuthService:
         return SignedIn(user=UserDTO.from_orm(user), tokens=tokens)
 
     async def login(self, email: str, password: str, user_agent: str | None) -> SignedIn:
-        # FOR SHARE до commit: смена пароля ждёт этот вход и отзывает его сессию,
-        # а вход, начатый после смены, видит уже новый хэш.
+        # Проверка пароля и ожидание Argon2 не должны занимать соединение с БД.
+        user = await self._uow.users.get_by_email(email)
+        user_id = user.id if user else None
+        password_hash = user.password_hash if user else None
+        await self._uow.rollback()
+        verified = await self._security.verify_password(password_hash, password)
+        if not verified:
+            raise InvalidCredentialsError
+
         user = await self._uow.users.get_by_email_for_share(email)
-        verified = await self._security.verify_password(
-            user.password_hash if user else None, password
-        )
-        if user is None or not verified:
+        if user is None or user.id != user_id or user.password_hash != password_hash:
             raise InvalidCredentialsError
 
         tokens = await self._open_session(user.id, user_agent)

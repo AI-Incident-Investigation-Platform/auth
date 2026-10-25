@@ -273,3 +273,15 @@ id = "METRICS-001"
 title = "/metrics считает запросы по шаблону маршрута и ошибки по коду, без health и самого /metrics"
 layer = "integration"
 domain = "metrics"
+
+[[scenario]]
+id = "AUTH-LOGIN-005"
+title = "Вход освобождает БД на время Argon2 и не выдаёт сессию со старым паролем при одновременной смене"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-REGISTER-004"
+title = "Параллельная регистрация одной почты создаёт один аккаунт и возвращает конфликт второй попытке"
+layer = "integration"
+domain = "auth"
