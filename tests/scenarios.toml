@@ -351,3 +351,15 @@ id = "API-ADMISSION-001"
 title = "Запрос сверх предела одновременных сразу получает 503 с Retry-After, пробы проходят, освободившийся слот принимает снова"
 layer = "unit"
 domain = "api"
+
+[[scenario]]
+id = "DB-POOL-001"
+title = "Исчерпанный пул соединений — недоступность БД (503), а не непредвиденная ошибка"
+layer = "integration"
+domain = "db"
+
+[[scenario]]
+id = "DB-TIMEOUT-001"
+title = "Превышение statement_timeout — недоступность БД (503), а не непредвиденная ошибка"
+layer = "integration"
+domain = "db"

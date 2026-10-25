@@ -34,6 +34,12 @@ class Database(BaseModel):
     postgres_port: int = 5432
     postgres_host: str = ""
     postgres_password: str = ""
+    pool_size: int = Field(default=5, ge=1)
+    pool_max_overflow: int = Field(default=5, ge=0)
+    pool_timeout_seconds: float = Field(default=2, gt=0)
+    pool_recycle_seconds: int = Field(default=1800, ge=1)
+    statement_timeout_ms: int = Field(default=5000, ge=1)
+    lock_timeout_ms: int = Field(default=2000, ge=1)
 
     @property
     def async_database_url(self) -> str:
