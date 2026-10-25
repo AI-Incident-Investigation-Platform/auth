@@ -14,6 +14,7 @@ from src.api.health.router import router as health_router
 from src.api.metrics.router import router as metrics_router
 from src.config import cfg
 from src.config.exc import ConfigIncompleteError
+from src.core.admission.middleware import AdmissionMiddleware
 from src.core.db.db import engine
 from src.core.di import (
     AuthProvider,
@@ -63,6 +64,7 @@ app = FastAPI(title="AIIP auth", lifespan=lifespan)
 
 setup_fastapi_dishka(app=app, container=container)
 
+app.add_middleware(AdmissionMiddleware, reject=ApiErrorHandler.handle_app_error)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(MetricsMiddleware)
 
