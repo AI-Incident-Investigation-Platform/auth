@@ -285,3 +285,33 @@ id = "AUTH-REGISTER-004"
 title = "Параллельная регистрация одной почты создаёт один аккаунт и возвращает конфликт второй попытке"
 layer = "integration"
 domain = "auth"
+
+[[scenario]]
+id = "API-LOG-001"
+title = "Неожиданная ошибка записывается один раз с контекстом, длительностью и безопасным стеком"
+layer = "unit"
+domain = "api"
+
+[[scenario]]
+id = "API-LOG-002"
+title = "Повторное использование refresh-токена записывается один раз на WARNING"
+layer = "unit"
+domain = "api"
+
+[[scenario]]
+id = "API-LOG-003"
+title = "Параллельные запросы изолируют пользователя, успешные HTTP не засоряют INFO"
+layer = "unit"
+domain = "api"
+
+[[scenario]]
+id = "API-LOG-004"
+title = "Форматтер защищает служебные поля и добавляет текущий спан"
+layer = "unit"
+domain = "api"
+
+[[scenario]]
+id = "API-LOG-005"
+title = "Медленный успешный запрос виден на WARNING"
+layer = "unit"
+domain = "api"

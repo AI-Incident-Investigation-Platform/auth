@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import threading
 
 import pytest
@@ -12,7 +13,10 @@ from tests.support.auth import Account, client_with_cookies, error_code, login
 
 
 @pytest.mark.case(id="AUTH-LOGIN-001")
-async def test_login_opens_new_session(client: AsyncClient, account: Account) -> None:
+async def test_login_opens_new_session(
+    client: AsyncClient, account: Account, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="src")
     client.cookies.clear()
 
     response = await login(client, account.email.upper(), account.password)
@@ -21,17 +25,27 @@ async def test_login_opens_new_session(client: AsyncClient, account: Account) ->
     assert response.json()["email"] == account.email
     assert {"access_token", "refresh_token"} <= set(client.cookies.keys())
     assert (await client.get("/api/auth/me")).status_code == 200
+    events = [record for record in caplog.records if record.name == "src.api.auth.service"]
+    assert len(events) == 1
+    assert events[0].message == "Пользователь вошёл в систему"
+    assert events[0].__dict__["user_id"] == response.json()["id"]
+    assert events[0].__dict__["session_id"] == client.cookies["refresh_token"].split(".", 1)[0]
 
 
 @pytest.mark.case(id="AUTH-LOGIN-002")
 async def test_login_does_not_reveal_whether_email_exists(
-    client: AsyncClient, account: Account
+    client: AsyncClient, account: Account, caplog: pytest.LogCaptureFixture
 ) -> None:
+    caplog.set_level(logging.INFO, logger="src")
     wrong_password = await login(client, account.email, "wrong-password")
     unknown_email = await login(client, "nobody@example.com", "wrong-password")
 
     assert wrong_password.status_code == unknown_email.status_code == 401
     assert error_code(wrong_password) == error_code(unknown_email) == "auth.invalid_credentials"
+    assert not any(record.name == "src.api.auth.service" for record in caplog.records)
+    errors = [record for record in caplog.records if record.name == "src.api.exc.handler"]
+    assert len(errors) == 2
+    assert all(record.message == "Неверный email или пароль" for record in errors)
 
 
 @pytest.mark.case(id="AUTH-LOGIN-004")

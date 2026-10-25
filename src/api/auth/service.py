@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid7
 
@@ -11,6 +12,7 @@ from src.api.exc.auth import (
     WrongCurrentPasswordError,
 )
 from src.config import cfg
+from src.core.context import bind_log_identity
 from src.core.db.dto.user import UserDTO
 from src.core.db.exc import IntegrityViolationError
 from src.core.db.models.session import Session
@@ -20,6 +22,8 @@ from src.core.security.dto import AccessTokenClaims, CurrentUser, Jwk, RefreshTo
 from src.core.security.exc import MalformedRefreshTokenError
 from src.core.security.live_sessions import LiveSessions
 from src.core.security.service import SecurityService
+
+log = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -41,7 +45,8 @@ class AuthService:
         self._live_sessions = live_sessions
 
     async def register(self, email: str, password: str, user_agent: str | None) -> SignedIn:
-        if await self._uow.users.get_by_email(email):
+        if existing_user := await self._uow.users.get_by_email(email):
+            bind_log_identity(existing_user.id)
             raise EmailAlreadyRegisteredError
         await self._uow.rollback()
 
@@ -55,8 +60,14 @@ class AuthService:
             if exc.constraint == "uq_users_email":
                 raise EmailAlreadyRegisteredError from exc
             raise
-        tokens = await self._open_session(user.id, user_agent)
+        session_id = uuid7()
+        bind_log_identity(user.id, session_id)
+        tokens = await self._open_session(user.id, session_id, user_agent)
         await self._uow.commit()
+        log.info(
+            "Пользователь зарегистрирован",
+            extra={"user_id": str(user.id), "session_id": str(session_id)},
+        )
         return SignedIn(user=UserDTO.from_orm(user), tokens=tokens)
 
     async def login(self, email: str, password: str, user_agent: str | None) -> SignedIn:
@@ -64,6 +75,8 @@ class AuthService:
         user = await self._uow.users.get_by_email(email)
         user_id = user.id if user else None
         password_hash = user.password_hash if user else None
+        if user_id is not None:
+            bind_log_identity(user_id)
         await self._uow.rollback()
         verified = await self._security.verify_password(password_hash, password)
         if not verified:
@@ -73,14 +86,22 @@ class AuthService:
         if user is None or user.id != user_id or user.password_hash != password_hash:
             raise InvalidCredentialsError
 
-        tokens = await self._open_session(user.id, user_agent)
+        session_id = uuid7()
+        bind_log_identity(user.id, session_id)
+        tokens = await self._open_session(user.id, session_id, user_agent)
         await self._uow.commit()
+        log.info(
+            "Пользователь вошёл в систему",
+            extra={"user_id": str(user.id), "session_id": str(session_id)},
+        )
         return SignedIn(user=UserDTO.from_orm(user), tokens=tokens)
 
     async def refresh(self, refresh_token: str | None) -> IssuedTokens:
         presented = self._parse_refresh_token(refresh_token)
         now = datetime.now(UTC)
         session = await self._uow.sessions.get_for_update(presented.session_id)
+        if session is not None:
+            bind_log_identity(session.user_id, session.id)
         if session is None or session.revoked_at is not None or session.expires_at <= now:
             raise InvalidRefreshTokenError
 
@@ -96,6 +117,12 @@ class AuthService:
             await self._uow.commit()
             raise RefreshTokenReusedError({"session_id": str(session.id)})
         await self._uow.commit()
+        log.debug(
+            "Токены сессии обновлены"
+            if tokens.refresh_token
+            else "Обработано обновление токенов из соседней вкладки",
+            extra={"user_id": str(session.user_id), "session_id": str(session.id)},
+        )
         return tokens
 
     async def logout(self, refresh_token: str | None) -> None:
@@ -110,12 +137,18 @@ class AuthService:
         if self._security.verify_token(
             presented.secret, session.refresh_token_hash
         ) or self._is_neighbour_refresh(session, presented.secret, now):
+            bind_log_identity(session.user_id, session.id)
             await self._revoke(session, now)
             await self._uow.commit()
+            log.info(
+                "Сессия отозвана при выходе пользователя",
+                extra={"user_id": str(session.user_id), "session_id": str(session.id)},
+            )
 
     async def change_password(
         self, current_user: CurrentUser, current_password: str, new_password: str
     ) -> None:
+        bind_log_identity(current_user.user_id, current_user.session_id)
         user = await self._uow.users.get_for_update(current_user.user_id)
         if user is None:
             raise AccountNotFoundError
@@ -128,6 +161,14 @@ class AuthService:
         )
         await self._live_sessions.forget(revoked)
         await self._uow.commit()
+        log.info(
+            "Пароль пользователя изменён",
+            extra={
+                "user_id": str(user.id),
+                "session_id": str(current_user.session_id),
+                "revoked_sessions_count": len(revoked),
+            },
+        )
 
     async def get_me(self, current_user: CurrentUser) -> UserDTO:
         user = await self._uow.users.get_by_id(current_user.user_id)
@@ -175,8 +216,10 @@ class AuthService:
         session.revoked_at = now
         await self._live_sessions.forget([session.id])
 
-    async def _open_session(self, user_id: UUID, user_agent: str | None) -> IssuedTokens:
-        refresh_token = self._security.issue_refresh_token(uuid7())
+    async def _open_session(
+        self, user_id: UUID, session_id: UUID, user_agent: str | None
+    ) -> IssuedTokens:
+        refresh_token = self._security.issue_refresh_token(session_id)
         self._uow.sessions.add(
             Session(
                 id=refresh_token.session_id,

@@ -9,6 +9,7 @@ cookie_secure = false
 
 [logging]
 level = "INFO"
+slow_request_ms = 1000
 
 [database]
 postgres_host = "postgres"

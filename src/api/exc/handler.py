@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import time
 from collections.abc import Mapping
 from http import HTTPStatus
 
@@ -9,7 +10,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from src.core.context import REQUEST_ID_HEADER, get_trace_id
+from src.api.exc.auth import RefreshTokenReusedError
+from src.core.context import REQUEST_ID_HEADER, get_trace_id, log_context
 from src.core.errors import (
     AppError,
     ConflictError,
@@ -96,11 +98,15 @@ class ApiErrorHandler:
         report = ErrorReport.from_exception(exc)
         status = HTTPStatus.INTERNAL_SERVER_ERROR
         ApiErrorHandler._record(request, report, status, logging.ERROR, exc)
+        request_id = str(
+            request.scope.get("state", {}).get("log_context", {}).get("trace_id", get_trace_id())
+        )
         return ApiErrorHandler._respond(
             status,
             InternalError.code,
             InternalError.message,
-            headers={REQUEST_ID_HEADER: get_trace_id()},
+            headers={REQUEST_ID_HEADER: request_id},
+            request_id=request_id,
         )
 
     @staticmethod
@@ -130,6 +136,8 @@ class ApiErrorHandler:
     @staticmethod
     def _level_for(exc: AppError) -> int:
         match exc:
+            case RefreshTokenReusedError():
+                return logging.WARNING
             case DomainError() | UnauthenticatedError():
                 return logging.INFO
             case IntegrationError() | PersistenceUnavailableError():
@@ -152,15 +160,39 @@ class ApiErrorHandler:
         error = {**report.to_log(), "status": status.value}
         if details:
             error["details"] = details
-        log.log(
-            level,
-            "http.error",
-            exc_info=exc if level >= logging.ERROR else None,
-            extra={
-                "error": jsonable_encoder(error),
-                "http": {"method": request.method, "path": request.url.path},
-            },
-        )
+        state = request.scope.setdefault("state", {})
+        state["error_logged"] = True
+        duration_ms = state.get("request_duration_ms")
+        if duration_ms is None and (started_at := state.get("request_started_at")) is not None:
+            duration_ms = round((time.monotonic() - started_at) * 1000)
+        if isinstance(exc, RefreshTokenReusedError):
+            message = "Обнаружено повторное использование refresh-токена. Сессия отозвана"
+        elif isinstance(exc, AppError):
+            message = exc.message
+        elif isinstance(exc, RequestValidationError):
+            message = "Некорректные параметры запроса"
+        elif status >= HTTPStatus.INTERNAL_SERVER_ERROR:
+            message = "Не удалось обработать запрос"
+        else:
+            message = "Запрос отклонён"
+        token = log_context.set(state.get("log_context"))
+        try:
+            log.log(
+                level,
+                message,
+                exc_info=exc if level >= logging.ERROR else None,
+                extra={
+                    "error": jsonable_encoder(error),
+                    "http": {
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status_code": status.value,
+                        "duration_ms": duration_ms,
+                    },
+                },
+            )
+        finally:
+            log_context.reset(token)
 
     @staticmethod
     def _respond(
@@ -169,6 +201,7 @@ class ApiErrorHandler:
         detail: str,
         errors: list[dict[str, str]] | None = None,
         headers: Mapping[str, str] | None = None,
+        request_id: str | None = None,
     ) -> JSONResponse:
         content: dict[str, object] = {
             "type": "about:blank",
@@ -176,7 +209,7 @@ class ApiErrorHandler:
             "status": status.value,
             "code": code,
             "detail": detail,
-            "request_id": get_trace_id(),
+            "request_id": request_id if request_id is not None else get_trace_id(),
         }
         if errors:
             content["errors"] = errors

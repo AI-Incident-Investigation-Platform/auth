@@ -73,6 +73,7 @@ class Auth(BaseModel):
 
 class Logging(BaseModel):
     level: str = "INFO"
+    slow_request_ms: int = 1000
 
 
 class Config(BaseSettings):

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 import pytest
 from fastapi import FastAPI
@@ -8,7 +9,10 @@ from tests.support.auth import Account, client_with_cookies, error_code, registe
 
 
 @pytest.mark.case(id="AUTH-REGISTER-001")
-async def test_registration_signs_in_with_normalized_email(client: AsyncClient) -> None:
+async def test_registration_signs_in_with_normalized_email(
+    client: AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.INFO, logger="src")
     response = await register(client, "New.User@Example.COM", "password-1")
 
     assert response.status_code == 201
@@ -16,6 +20,11 @@ async def test_registration_signs_in_with_normalized_email(client: AsyncClient) 
     assert set(response.json()) == {"id", "email", "created_at"}
     assert {"access_token", "refresh_token"} <= set(client.cookies.keys())
     assert (await client.get("/api/auth/me")).status_code == 200
+    events = [record for record in caplog.records if record.name == "src.api.auth.service"]
+    assert len(events) == 1
+    assert events[0].message == "Пользователь зарегистрирован"
+    assert events[0].__dict__["user_id"] == response.json()["id"]
+    assert events[0].__dict__["session_id"] == client.cookies["refresh_token"].split(".", 1)[0]
 
 
 @pytest.mark.case(id="AUTH-REGISTER-002")

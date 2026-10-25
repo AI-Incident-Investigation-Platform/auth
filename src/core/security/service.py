@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives.serialization import (
 from jwt.algorithms import RSAAlgorithm
 
 from src.config import cfg
+from src.core.context import bind_log_identity
 from src.core.security.dto import (
     AccessTokenClaims,
     CurrentUser,
@@ -154,6 +155,7 @@ class SessionAuthenticator:
         if not access_token:
             raise NotAuthenticatedError
         claims = self._security.decode_access_token(access_token)
+        bind_log_identity(claims.user_id, claims.session_id)
         if not await self._live_sessions.is_live(claims.session_id):
             raise NotAuthenticatedError
         return CurrentUser(user_id=claims.user_id, session_id=claims.session_id)

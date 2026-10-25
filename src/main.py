@@ -44,14 +44,19 @@ container = make_async_container(
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_logging(cfg.logging.level)
     if missing := cfg.missing_required():
-        log.critical("app.config_incomplete", extra={"missing_settings": missing})
+        log.critical(
+            "Не заданы обязательные настройки сервиса", extra={"missing_settings": missing}
+        )
         raise ConfigIncompleteError({"missing_settings": missing})
-    await container.get(SecurityService)
     try:
+        await container.get(SecurityService)
+        log.info("Сервис готов принимать запросы")
         yield
     finally:
+        log.info("Сервис останавливается")
         await container.close()
         shutdown_tracing()
+        log.info("Сервис остановлен")
 
 
 app = FastAPI(title="AIIP auth", lifespan=lifespan)
