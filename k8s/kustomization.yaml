@@ -3,4 +3,4 @@ kind: Kustomization
 namespace: apps
 resources:
   - auth.yaml
-  - hpa.yaml
+  - scaledobject.yaml

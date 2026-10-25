@@ -1,0 +1,50 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: auth
+spec:
+  scaleTargetRef:
+    name: auth
+  minReplicaCount: 1
+  maxReplicaCount: 3
+  pollingInterval: 5
+  fallback:
+    failureThreshold: 3
+    replicas: 2
+  advanced:
+    horizontalPodAutoscalerConfig:
+      name: auth
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Pods
+              value: 2
+              periodSeconds: 10
+        scaleDown:
+          stabilizationWindowSeconds: 120
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 60
+  triggers:
+    - type: prometheus
+      name: process-cpu
+      metricType: AverageValue
+      metadata:
+        serverAddress: http://prometheus.infra:9090
+        query: sum(rate(process_cpu_seconds_total{namespace="apps",app="auth"}[15s]))
+        threshold: "0.5"
+        ignoreNullValues: "false"
+    - type: prometheus
+      name: saturation
+      metricType: AverageValue
+      metadata:
+        serverAddress: http://prometheus.infra:9090
+        query: (sum(http_requests_active{namespace="apps",app="auth"}) or vector(0)) / max(http_requests_capacity{namespace="apps",app="auth"})
+        threshold: "0.5"
+        ignoreNullValues: "false"
+    - type: cpu
+      metricType: AverageValue
+      metadata:
+        value: 500m
