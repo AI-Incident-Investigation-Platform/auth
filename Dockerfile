@@ -26,6 +26,8 @@ COPY --chown=app:app alembic ./alembic
 
 USER app
 
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH" \
+    MALLOC_ARENA_MAX=2 \
+    MALLOC_MMAP_THRESHOLD_=131072
 
 CMD ["python", "-m", "src"]
