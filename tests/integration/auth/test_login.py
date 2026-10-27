@@ -234,4 +234,4 @@ async def test_code_and_challenge_never_reach_logs(
     logged = " ".join(f"{record.getMessage()} {record.__dict__}" for record in caplog.records)
     assert challenge_id not in logged
     assert f"'{code}'" not in logged and f'"{code}"' not in logged
-    assert any(record.message == "auth.signed_in" for record in caplog.records)
+    assert any(record.message == "Пользователь вошёл по коду" for record in caplog.records)

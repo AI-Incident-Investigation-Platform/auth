@@ -175,7 +175,7 @@ async def test_logout_revokes_access_token_immediately(
     assert "access_token" not in client.cookies
     events = [record for record in caplog.records if record.name == "src.api.auth.service"]
     assert len(events) == 1
-    assert events[0].message == "auth.signed_out"
+    assert events[0].message == "Сессия отозвана при выходе пользователя"
     assert events[0].__dict__["session_id"] == refresh.split(".", 1)[0]
     async with client_with_cookies(
         app, {"access_token": access, "refresh_token": refresh}

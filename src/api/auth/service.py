@@ -70,7 +70,7 @@ class AuthService:
         except IntegrationError:
             await self._otp_challenges.delete(challenge_id)
             raise
-        log.info("auth.login_code_queued")
+        log.info("Код входа поставлен в очередь на отправку")
         return self._present(challenge)
 
     async def resend_code(self, challenge_id: str) -> LoginChallenge:
@@ -96,7 +96,7 @@ class AuthService:
         except IntegrationError:
             await self._otp_challenges.replace(challenge)
             raise
-        log.info("auth.login_code_resent", extra={"otp": {"resends": resent.resends}})
+        log.info("Код входа отправлен повторно", extra={"otp": {"resends": resent.resends}})
         return self._present(resent)
 
     async def verify_code(self, challenge_id: str, code: str, user_agent: str | None) -> SignedIn:
@@ -123,7 +123,7 @@ class AuthService:
         tokens = await self._open_session(user.id, session_id, user_agent)
         await self._uow.commit()
         log.info(
-            "auth.signed_in",
+            "Пользователь вошёл по коду",
             extra={
                 "user_id": str(user.id),
                 "session_id": str(session_id),
@@ -154,7 +154,9 @@ class AuthService:
             raise RefreshTokenReusedError({"session_id": str(session.id)})
         await self._uow.commit()
         log.debug(
-            "auth.tokens_refreshed" if tokens.refresh_token else "auth.neighbour_tab_refreshed",
+            "Токены сессии обновлены"
+            if tokens.refresh_token
+            else "Обработано обновление токенов из соседней вкладки",
             extra={"user_id": str(session.user_id), "session_id": str(session.id)},
         )
         return tokens
@@ -175,7 +177,7 @@ class AuthService:
             await self._revoke(session, now)
             await self._uow.commit()
             log.info(
-                "auth.signed_out",
+                "Сессия отозвана при выходе пользователя",
                 extra={"user_id": str(session.user_id), "session_id": str(session.id)},
             )
 
