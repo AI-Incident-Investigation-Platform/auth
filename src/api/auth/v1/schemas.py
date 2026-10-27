@@ -33,16 +33,3 @@ class UserResponse(BaseModel):
     id: UUID
     email: str
     created_at: datetime
-
-
-class JwkResponse(BaseModel):
-    kty: str
-    n: str
-    e: str
-    kid: str
-    use: str
-    alg: str
-
-
-class JwksResponse(BaseModel):
-    keys: list[JwkResponse]

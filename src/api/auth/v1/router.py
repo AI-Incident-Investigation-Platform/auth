@@ -3,15 +3,14 @@ from typing import Annotated
 from dishka.integrations.fastapi import DishkaRoute, FromDishka
 from fastapi import APIRouter, Cookie, Header, Response, status
 
-from src.api.auth.cookies import clear_auth_cookies, set_auth_cookies
-from src.api.auth.schemas import (
-    JwksResponse,
+from src.api.auth.service import AuthService
+from src.api.auth.v1.cookies import clear_auth_cookies, set_auth_cookies
+from src.api.auth.v1.schemas import (
     LoginRequest,
     PasswordChangeRequest,
     RegisterRequest,
     UserResponse,
 )
-from src.api.auth.service import AuthService
 from src.core.security.dto import CurrentUser
 from src.core.security.enums import AuthCookie
 
@@ -78,8 +77,3 @@ async def get_me(
 ) -> UserResponse:
     user = await service.get_me(current_user)
     return UserResponse.model_validate(user, from_attributes=True)
-
-
-@router.get("/.well-known/jwks.json")
-async def jwks(service: FromDishka[AuthService]) -> JwksResponse:
-    return JwksResponse.model_validate({"keys": service.jwks()}, from_attributes=True)

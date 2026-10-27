@@ -19,7 +19,7 @@ async def test_registration_signs_in_with_normalized_email(
     assert response.json()["email"] == "new.user@example.com"
     assert set(response.json()) == {"id", "email", "created_at"}
     assert {"access_token", "refresh_token"} <= set(client.cookies.keys())
-    assert (await client.get("/api/auth/me")).status_code == 200
+    assert (await client.get("/api/v1/auth/me")).status_code == 200
     events = [record for record in caplog.records if record.name == "src.api.auth.service"]
     assert len(events) == 1
     assert events[0].message == "Пользователь зарегистрирован"
@@ -47,7 +47,7 @@ async def test_registration_rejects_taken_email_in_any_case(
     ids=["bad-email", "short-password"],
 )
 async def test_registration_validates_input(client: AsyncClient, body: dict[str, str]) -> None:
-    response = await client.post("/api/auth/register", json=body)
+    response = await client.post("/api/v1/auth/register", json=body)
 
     assert response.status_code == 422
     assert error_code(response) == "request.invalid"

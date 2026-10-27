@@ -24,7 +24,7 @@ async def test_login_opens_new_session(
     assert response.status_code == 200
     assert response.json()["email"] == account.email
     assert {"access_token", "refresh_token"} <= set(client.cookies.keys())
-    assert (await client.get("/api/auth/me")).status_code == 200
+    assert (await client.get("/api/v1/auth/me")).status_code == 200
     events = [record for record in caplog.records if record.name == "src.api.auth.service"]
     assert len(events) == 1
     assert events[0].message == "Пользователь вошёл в систему"
@@ -97,7 +97,7 @@ async def test_password_check_releases_db_and_rejects_password_changed_during_lo
             assert idle_transactions == 0
             changed = await asyncio.wait_for(
                 client.post(
-                    "/api/auth/password",
+                    "/api/v1/auth/password",
                     json={"current_password": account.password, "new_password": "password-2"},
                 ),
                 timeout=3,

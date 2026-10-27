@@ -11,11 +11,11 @@ class Account:
 
 
 async def register(client: AsyncClient, email: str, password: str) -> Response:
-    return await client.post("/api/auth/register", json={"email": email, "password": password})
+    return await client.post("/api/v1/auth/register", json={"email": email, "password": password})
 
 
 async def login(client: AsyncClient, email: str, password: str) -> Response:
-    return await client.post("/api/auth/login", json={"email": email, "password": password})
+    return await client.post("/api/v1/auth/login", json={"email": email, "password": password})
 
 
 def client_with_cookies(app: FastAPI, cookies: dict[str, str]) -> AsyncClient:

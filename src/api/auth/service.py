@@ -18,7 +18,7 @@ from src.core.db.exc import IntegrityViolationError
 from src.core.db.models.session import Session
 from src.core.db.models.user import User
 from src.core.db.uow import UnitOfWork
-from src.core.security.dto import AccessTokenClaims, CurrentUser, Jwk, RefreshToken
+from src.core.security.dto import AccessTokenClaims, CurrentUser, RefreshToken
 from src.core.security.exc import MalformedRefreshTokenError
 from src.core.security.live_sessions import LiveSessions
 from src.core.security.service import SecurityService
@@ -175,9 +175,6 @@ class AuthService:
         if user is None:
             raise AccountNotFoundError
         return UserDTO.from_orm(user)
-
-    def jwks(self) -> tuple[Jwk, ...]:
-        return self._security.jwks()
 
     def _parse_refresh_token(self, refresh_token: str | None) -> RefreshToken:
         if not refresh_token:

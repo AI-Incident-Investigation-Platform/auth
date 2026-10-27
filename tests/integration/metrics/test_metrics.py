@@ -17,7 +17,7 @@ async def scrape(client: AsyncClient) -> dict[tuple[str, frozenset[tuple[str, st
 async def test_metrics_count_requests_by_route_and_errors_by_code(client: AsyncClient) -> None:
     request = (
         "http_requests_total",
-        frozenset({("method", "GET"), ("path", "/api/auth/me"), ("status", "401")}),
+        frozenset({("method", "GET"), ("path", "/api/v1/auth/me"), ("status", "401")}),
     )
     error = (
         "app_errors_total",
@@ -32,7 +32,7 @@ async def test_metrics_count_requests_by_route_and_errors_by_code(client: AsyncC
     )
     before = await scrape(client)
 
-    assert (await client.get("/api/auth/me")).status_code == 401
+    assert (await client.get("/api/v1/auth/me")).status_code == 401
     await client.get("/health")
 
     after = await scrape(client)

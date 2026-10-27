@@ -179,10 +179,10 @@ layer = "integration"
 domain = "auth"
 
 [[scenario]]
-id = "AUTH-JWKS-002"
+id = "JWKS-001"
 title = "JWKS отдаёт валидный публичный ключ без лишних полей"
 layer = "integration"
-domain = "auth"
+domain = "jwks"
 
 [[scenario]]
 id = "AUTH-LOGOUT-001"
