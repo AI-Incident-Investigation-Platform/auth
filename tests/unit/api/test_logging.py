@@ -62,7 +62,7 @@ async def test_error_logged_once_with_trace_duration_and_safe_stack(logs: io.Str
     assert entry["level"] == "ERROR"
     assert len(entry["trace_id"]) == 32
     assert len(entry["span_id"]) == 16
-    assert response.json()["request_id"] == entry["trace_id"]
+    assert response.json()["error"]["request_id"] == entry["trace_id"]
     assert entry["user_id"] == "user-1"
     assert entry["session_id"] == "session-1"
     assert entry["http"]["status_code"] == 500

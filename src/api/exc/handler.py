@@ -20,6 +20,7 @@ from src.core.errors import (
     ErrorLayer,
     ErrorReport,
     ForbiddenError,
+    GoneError,
     IntegrationBadResponseError,
     IntegrationError,
     IntegrationTimeoutError,
@@ -28,6 +29,7 @@ from src.core.errors import (
     NotFoundError,
     OverloadedError,
     PersistenceUnavailableError,
+    RateLimitedError,
     RuleViolationError,
     UnauthenticatedError,
 )
@@ -60,9 +62,17 @@ class ApiErrorHandler:
                 exc.message,
                 headers={"Retry-After": str(cfg.service.overload_retry_after_seconds)},
             )
-        if isinstance(
-            exc, DomainError | UnauthenticatedError | IntegrationError | PersistenceUnavailableError
-        ):
+        if isinstance(exc, RateLimitedError):
+            return ApiErrorHandler._respond(
+                status,
+                exc.code,
+                exc.message,
+                details=exc.details,
+                headers={"Retry-After": str(exc.retry_after_seconds)},
+            )
+        if isinstance(exc, DomainError | UnauthenticatedError):
+            return ApiErrorHandler._respond(status, exc.code, exc.message, details=exc.details)
+        if isinstance(exc, IntegrationError | PersistenceUnavailableError):
             return ApiErrorHandler._respond(status, exc.code, exc.message)
         return ApiErrorHandler._respond(status, InternalError.code, InternalError.message)
 
@@ -85,7 +95,7 @@ class ApiErrorHandler:
             for field in fields
         ]
         return ApiErrorHandler._respond(
-            status, report.code, "Некорректные параметры запроса", errors=errors
+            status, report.code, "Некорректные параметры запроса", details={"errors": errors}
         )
 
     @staticmethod
@@ -131,6 +141,10 @@ class ApiErrorHandler:
                 return HTTPStatus.UNPROCESSABLE_ENTITY
             case ForbiddenError():
                 return HTTPStatus.FORBIDDEN
+            case GoneError():
+                return HTTPStatus.GONE
+            case RateLimitedError():
+                return HTTPStatus.TOO_MANY_REQUESTS
             case DomainError():
                 return HTTPStatus.BAD_REQUEST
             case IntegrationTimeoutError():
@@ -207,24 +221,16 @@ class ApiErrorHandler:
     def _respond(
         status: HTTPStatus,
         code: str,
-        detail: str,
-        errors: list[dict[str, str]] | None = None,
+        message: str,
+        details: Mapping[str, object] | None = None,
         headers: Mapping[str, str] | None = None,
         request_id: str | None = None,
     ) -> JSONResponse:
-        content: dict[str, object] = {
-            "type": "about:blank",
-            "title": status.phrase,
-            "status": status.value,
+        error: dict[str, object] = {
             "code": code,
-            "detail": detail,
+            "message": message,
             "request_id": request_id if request_id is not None else get_trace_id(),
         }
-        if errors:
-            content["errors"] = errors
-        return JSONResponse(
-            status_code=status.value,
-            content=content,
-            headers=headers,
-            media_type="application/problem+json",
-        )
+        if details:
+            error["details"] = jsonable_encoder(details)
+        return JSONResponse(status_code=status.value, content={"error": error}, headers=headers)

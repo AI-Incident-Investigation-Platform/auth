@@ -4,6 +4,7 @@ from src.core.errors.base import (
     CoreError,
     DomainError,
     ForbiddenError,
+    GoneError,
     IntegrationBadResponseError,
     IntegrationError,
     IntegrationTimeoutError,
@@ -14,6 +15,7 @@ from src.core.errors.base import (
     PersistenceConflictError,
     PersistenceError,
     PersistenceUnavailableError,
+    RateLimitedError,
     RuleViolationError,
     UnauthenticatedError,
 )
@@ -29,6 +31,7 @@ __all__ = [
     "ErrorLink",
     "ErrorReport",
     "ForbiddenError",
+    "GoneError",
     "IntegrationBadResponseError",
     "IntegrationError",
     "IntegrationTimeoutError",
@@ -39,6 +42,7 @@ __all__ = [
     "PersistenceConflictError",
     "PersistenceError",
     "PersistenceUnavailableError",
+    "RateLimitedError",
     "RuleViolationError",
     "UnauthenticatedError",
 ]

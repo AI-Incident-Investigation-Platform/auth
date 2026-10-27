@@ -51,8 +51,8 @@ async def test_request_over_limit_is_rejected_and_slot_is_freed(
 
     assert rejected.status_code == 503
     assert rejected.headers["retry-after"] == str(cfg.service.overload_retry_after_seconds)
-    assert rejected.headers["content-type"] == "application/problem+json"
-    assert rejected.json()["code"] == "service.overloaded"
+    assert rejected.headers["content-type"] == "application/json"
+    assert rejected.json()["error"]["code"] == "service.overloaded"
     assert probe.status_code == 200
     assert accepted.status_code == 200
     assert after.status_code == 200
