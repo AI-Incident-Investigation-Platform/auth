@@ -6,9 +6,12 @@ from fastapi import APIRouter, Cookie, Header, Response, status
 from src.api.auth.service import AuthService
 from src.api.auth.v1.cookies import clear_auth_cookies, set_auth_cookies
 from src.api.auth.v1.schemas import (
+    AuthSessionResponse,
+    LoginChallengeResponse,
     LoginRequest,
-    PasswordChangeRequest,
-    RegisterRequest,
+    OtpResendRequest,
+    OtpResendResponse,
+    OtpVerifyRequest,
     UserResponse,
 )
 from src.core.security.dto import CurrentUser
@@ -17,28 +20,31 @@ from src.core.security.enums import AuthCookie
 router = APIRouter(prefix="/auth", tags=["auth"], route_class=DishkaRoute)
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(
-    body: RegisterRequest,
+@router.post("/login", status_code=status.HTTP_202_ACCEPTED)
+async def login(body: LoginRequest, service: FromDishka[AuthService]) -> LoginChallengeResponse:
+    challenge = await service.start_login(body.email)
+    return LoginChallengeResponse.model_validate(challenge, from_attributes=True)
+
+
+@router.post("/otp/verify")
+async def verify_otp(
+    body: OtpVerifyRequest,
     response: Response,
     service: FromDishka[AuthService],
     user_agent: Annotated[str | None, Header()] = None,
-) -> UserResponse:
-    signed_in = await service.register(body.email, body.password, user_agent)
+) -> AuthSessionResponse:
+    signed_in = await service.verify_code(body.challenge_id, body.code, user_agent)
     set_auth_cookies(response, signed_in.tokens)
-    return UserResponse.model_validate(signed_in.user, from_attributes=True)
+    return AuthSessionResponse(
+        user=UserResponse.model_validate(signed_in.user, from_attributes=True),
+        account_created=signed_in.account_created,
+    )
 
 
-@router.post("/login")
-async def login(
-    body: LoginRequest,
-    response: Response,
-    service: FromDishka[AuthService],
-    user_agent: Annotated[str | None, Header()] = None,
-) -> UserResponse:
-    signed_in = await service.login(body.email, body.password, user_agent)
-    set_auth_cookies(response, signed_in.tokens)
-    return UserResponse.model_validate(signed_in.user, from_attributes=True)
+@router.post("/otp/resend", status_code=status.HTTP_202_ACCEPTED)
+async def resend_otp(body: OtpResendRequest, service: FromDishka[AuthService]) -> OtpResendResponse:
+    challenge = await service.resend_code(body.challenge_id)
+    return OtpResendResponse.model_validate(challenge, from_attributes=True)
 
 
 @router.post("/refresh", status_code=status.HTTP_204_NO_CONTENT)
@@ -59,15 +65,6 @@ async def logout(
 ) -> None:
     await service.logout(refresh_token)
     clear_auth_cookies(response)
-
-
-@router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
-async def change_password(
-    body: PasswordChangeRequest,
-    current_user: FromDishka[CurrentUser],
-    service: FromDishka[AuthService],
-) -> None:
-    await service.change_password(current_user, body.current_password, body.new_password)
 
 
 @router.get("/me")

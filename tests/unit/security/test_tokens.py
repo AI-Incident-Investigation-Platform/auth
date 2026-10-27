@@ -1,17 +1,13 @@
-import asyncio
 import dataclasses
 import hashlib
 import hmac
 import json
-import threading
-import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid7
 
 import jwt
 import pytest
-from argon2 import PasswordHasher
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
@@ -26,7 +22,6 @@ from src.core.security.dto import AccessTokenClaims
 from src.core.security.exc import (
     MalformedRefreshTokenError,
     NotAuthenticatedError,
-    PasswordHashingOverloadedError,
     SigningKeyUnavailableError,
 )
 from src.core.security.service import SecurityService
@@ -137,20 +132,6 @@ def test_malformed_refresh_token_is_rejected(token: str) -> None:
         SecurityService().parse_refresh_token(token)
 
 
-@pytest.mark.case(id="AUTH-PASSWORD-001")
-async def test_password_hash_is_salted_and_verifiable() -> None:
-    security = SecurityService()
-
-    first = await security.hash_password("password-1")
-    second = await security.hash_password("password-1")
-
-    assert first != second
-    assert first.startswith("$argon2")
-    assert await security.verify_password(first, "password-1")
-    assert not await security.verify_password(first, "password-2")
-    assert not await security.verify_password("not-a-hash", "password-1")
-
-
 @pytest.mark.case(id="AUTH-KEY-001")
 def test_missing_signing_key_stops_service(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cfg.auth, "private_key_path", "/nonexistent/private.pem")
@@ -159,97 +140,19 @@ def test_missing_signing_key_stops_service(monkeypatch: pytest.MonkeyPatch) -> N
         SecurityService()
 
 
-@pytest.mark.case(id="AUTH-PASSWORD-004")
-@pytest.mark.parametrize("concurrency", [1, 2])
-async def test_concurrent_password_hashing_is_bounded(
-    monkeypatch: pytest.MonkeyPatch, concurrency: int
-) -> None:
-    monkeypatch.setattr(cfg.auth, "password_hashing_concurrency", concurrency)
+@pytest.mark.case(id="AUTH-OTP-001")
+def test_otp_code_is_six_digits_and_digest_is_bound_to_challenge() -> None:
     security = SecurityService()
-    running = 0
-    peak = 0
-    lock = threading.Lock()
+    codes = {security.new_otp_code() for _ in range(200)}
+    challenge_id = security.new_challenge_id()
+    other_challenge_id = security.new_challenge_id()
 
-    class SlowHasher:
-        def hash(self, password: str) -> str:
-            nonlocal running, peak
-            with lock:
-                running += 1
-                peak = max(peak, running)
-            time.sleep(0.05)
-            with lock:
-                running -= 1
-            return "$argon2id$stub"
-
-    monkeypatch.setattr(security, "_password_hasher", SlowHasher())
-
-    await asyncio.gather(*(security.hash_password("password-1") for _ in range(8)))
-
-    assert peak == concurrency
-
-
-@pytest.mark.case(id="AUTH-PASSWORD-007")
-async def test_password_queue_over_limit_is_rejected_at_once(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(cfg.auth, "password_hashing_concurrency", 1)
-    monkeypatch.setattr(cfg.auth, "password_hashing_queue_limit", 2)
-    security = SecurityService()
-    release = threading.Event()
-
-    def blocked_hash(
-        self: PasswordHasher, password: str | bytes, *, salt: bytes | None = None
-    ) -> str:
-        release.wait(5)
-        return "$argon2id$stub"
-
-    monkeypatch.setattr(PasswordHasher, "hash", blocked_hash)
-
-    accepted = [asyncio.create_task(security.hash_password("password-1")) for _ in range(3)]
-    await asyncio.sleep(0.05)
-    with pytest.raises(PasswordHashingOverloadedError):
-        await security.hash_password("password-1")
-    release.set()
-    await asyncio.gather(*accepted)
-
-    assert await security.hash_password("password-1") == "$argon2id$stub"
-
-
-@pytest.mark.case(id="AUTH-PASSWORD-008")
-async def test_cancelled_request_keeps_hashing_slot_until_argon2_finishes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(cfg.auth, "password_hashing_concurrency", 1)
-    security = SecurityService()
-    release = threading.Event()
-    entered = threading.Event()
-    running = 0
-    peak = 0
-    lock = threading.Lock()
-
-    def blocked_hash(
-        self: PasswordHasher, password: str | bytes, *, salt: bytes | None = None
-    ) -> str:
-        nonlocal running, peak
-        with lock:
-            running += 1
-            peak = max(peak, running)
-        entered.set()
-        release.wait(5)
-        with lock:
-            running -= 1
-        return "$argon2id$stub"
-
-    monkeypatch.setattr(PasswordHasher, "hash", blocked_hash)
-
-    cancelled = asyncio.create_task(security.hash_password("password-1"))
-    assert await asyncio.to_thread(entered.wait, 5)
-    cancelled.cancel()
-    follower = asyncio.create_task(security.hash_password("password-1"))
-    await asyncio.sleep(0.05)
-    started_while_busy = peak
-    release.set()
-    await follower
-
-    assert started_while_busy == 1
-    assert peak == 1
+    assert all(len(code) == 6 and code.isdigit() for code in codes)
+    assert len(codes) > 150
+    assert challenge_id.startswith("ch_") and 23 <= len(challenge_id) <= 123
+    digest = security.otp_digest(challenge_id, "004271")
+    assert "004271" not in digest
+    assert security.verify_otp(challenge_id, "004271", digest)
+    assert not security.verify_otp(challenge_id, "4271", digest)
+    assert not security.verify_otp(other_challenge_id, "004271", digest)
+    assert digest != hashlib.sha256(b"004271").hexdigest()

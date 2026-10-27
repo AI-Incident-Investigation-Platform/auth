@@ -37,8 +37,6 @@ spec:
               value: 0.0.0.0
             - name: SERVICE__PORT
               value: "8001"
-            - name: AUTH__PASSWORD_HASHING_CONCURRENCY
-              value: "1"
           ports:
             - name: http
               containerPort: 8001

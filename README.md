@@ -1,12 +1,15 @@
 # auth
 
-Сервис аутентификации AIIP: регистрация, вход по email и паролю, сессии
-устройств, refresh с ротацией, смена пароля, выход. Подписывает RS256 JWT
-и отдаёт публичный ключ как JWKS — по нему остальные сервисы проверяют
-токен сами, без похода в `auth`.
+Сервис аутентификации AIIP: вход и регистрация по шестизначному коду на
+почту (пароля нет), сессии устройств в HttpOnly-куках, refresh с ротацией,
+выход. Письмо с кодом не отправляет сам: ставит задачу сервису `email` в
+RabbitMQ. Подписывает RS256 JWT и отдаёт публичный ключ как JWKS — по нему
+остальные сервисы проверяют токен сами, без похода в `auth`.
 
 Работает в namespace `apps` кластера `aiip`, снаружи — за Traefik на
-`/api/v1/auth`. Данные — свои БД в Postgres и префикс `auth:` в Dragonfly.
+`/api/v1/auth`. Данные — своя БД в Postgres и префикс `auth:` в Dragonfly
+(пропуска сессий, коды входа, лимиты), задачи на письма — exchange `email` в
+RabbitMQ.
 
 ## Документация
 
@@ -20,7 +23,7 @@
 ## Стек
 
 Python 3.14, uv, FastAPI, dishka, SQLAlchemy 2.0 async + asyncpg, Alembic,
-pydantic-settings, redis-клиент к Dragonfly, argon2, PyJWT, OpenTelemetry,
+pydantic-settings, redis-клиент к Dragonfly, aio-pika к RabbitMQ, PyJWT, OpenTelemetry,
 prometheus-client; httpx — только в тестах.
 
 ## Запуск
@@ -43,7 +46,7 @@ make down            # убрать Deployment, Service и маршрут; се�
 ```bash
 make check             # ruff format --check + ruff check + mypy
 make test              # unit, без Docker
-make test-integration  # Postgres и Dragonfly в Testcontainers
+make test-integration  # Postgres, Dragonfly и RabbitMQ в Testcontainers
 make test-all
 ```
 

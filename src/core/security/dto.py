@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 
@@ -31,3 +32,19 @@ class Jwk:
     kid: str
     use: str
     alg: str
+
+
+@dataclass(frozen=True)
+class OtpChallenge:
+    challenge_id: str
+    email: str
+    code_digest: str
+    code_expires_at: datetime
+    resend_available_at: datetime
+    resends: int
+
+
+@dataclass(frozen=True)
+class SendCount:
+    count: int
+    resets_in_seconds: int

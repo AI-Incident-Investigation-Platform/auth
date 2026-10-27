@@ -21,6 +21,7 @@ from src.core.di import (
     AuthProvider,
     CacheProvider,
     DbProvider,
+    EmailProvider,
     HealthProvider,
     JwksProvider,
     SecurityProvider,
@@ -28,6 +29,7 @@ from src.core.di import (
 from src.core.logging import setup_logging
 from src.core.metrics import MetricsMiddleware
 from src.core.middleware import RequestLoggingMiddleware
+from src.core.security.origin import OriginMiddleware
 from src.core.security.service import SecurityService
 from src.core.tracing import setup_tracing, shutdown_tracing
 
@@ -37,6 +39,7 @@ container = make_async_container(
     FastapiProvider(),
     DbProvider(),
     CacheProvider(),
+    EmailProvider(),
     SecurityProvider(),
     AuthProvider(),
     HealthProvider(),
@@ -67,6 +70,7 @@ app = FastAPI(title="AIIP auth", lifespan=lifespan)
 
 setup_fastapi_dishka(app=app, container=container)
 
+app.add_middleware(OriginMiddleware, reject=ApiErrorHandler.handle_app_error)
 app.add_middleware(AdmissionMiddleware, reject=ApiErrorHandler.handle_app_error)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(MetricsMiddleware)

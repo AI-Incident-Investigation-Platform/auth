@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.db.models import Session, User
 from src.main import container
-from tests.support.auth import Account, client_with_cookies, error_code, login
+from tests.support.auth import Account, Mailbox, client_with_cookies, error_code, sign_in
 
 
 @pytest.mark.case(id="AUTH-SESSION-001")
@@ -95,10 +95,10 @@ async def test_lost_session_pass_is_restored_by_refresh(
 
 @pytest.mark.case(id="AUTH-SESSION-011")
 async def test_sessions_of_different_devices_are_independent(
-    app: FastAPI, client: AsyncClient, account: Account
+    app: FastAPI, client: AsyncClient, account: Account, mailbox: Mailbox
 ) -> None:
     async with client_with_cookies(app, {}) as other_device:
-        assert (await login(other_device, account.email, account.password)).status_code == 200
+        assert (await sign_in(other_device, mailbox, account.email)).status_code == 200
 
         assert (await client.post("/api/v1/auth/logout")).status_code == 204
 
@@ -144,9 +144,9 @@ async def test_bearer_header_is_accepted_like_cookie(
 
 @pytest.mark.case(id="AUTH-COOKIE-001")
 async def test_auth_cookies_are_http_only_strict_and_scoped(
-    client: AsyncClient, account: Account
+    client: AsyncClient, account: Account, mailbox: Mailbox
 ) -> None:
-    response = await login(client, account.email, account.password)
+    response = await sign_in(client, mailbox, account.email)
 
     cookies = {
         header.split("=", 1)[0]: header.lower()
@@ -156,8 +156,9 @@ async def test_auth_cookies_are_http_only_strict_and_scoped(
     for header in cookies.values():
         assert "httponly" in header
         assert "samesite=strict" in header
-    assert "path=/api;" in cookies["access_token"]
+    assert "path=/;" in cookies["access_token"]
     assert "path=/api/v1/auth;" in cookies["refresh_token"]
+    assert "token" not in response.text
 
 
 @pytest.mark.case(id="AUTH-LOGOUT-001")
@@ -174,7 +175,7 @@ async def test_logout_revokes_access_token_immediately(
     assert "access_token" not in client.cookies
     events = [record for record in caplog.records if record.name == "src.api.auth.service"]
     assert len(events) == 1
-    assert events[0].message == "Сессия отозвана при выходе пользователя"
+    assert events[0].message == "auth.signed_out"
     assert events[0].__dict__["session_id"] == refresh.split(".", 1)[0]
     async with client_with_cookies(
         app, {"access_token": access, "refresh_token": refresh}
@@ -201,44 +202,6 @@ async def test_logout_with_session_id_but_wrong_secret_revokes_nothing(
 
     assert (await client.get("/api/v1/auth/me")).status_code == 200
     assert (await client.post("/api/v1/auth/refresh")).status_code == 204
-
-
-@pytest.mark.case(id="AUTH-PASSWORD-002")
-async def test_password_change_revokes_other_sessions_immediately(
-    app: FastAPI, client: AsyncClient, account: Account, caplog: pytest.LogCaptureFixture
-) -> None:
-    caplog.set_level(logging.INFO, logger="src")
-    async with client_with_cookies(app, {}) as other_device:
-        assert (await login(other_device, account.email, account.password)).status_code == 200
-
-        response = await client.post(
-            "/api/v1/auth/password",
-            json={"current_password": account.password, "new_password": "password-2"},
-        )
-
-        assert response.status_code == 204
-        events = [
-            record for record in caplog.records if record.message == "Пароль пользователя изменён"
-        ]
-        assert len(events) == 1
-        assert events[0].__dict__["revoked_sessions_count"] == 1
-        assert (await other_device.get("/api/v1/auth/me")).status_code == 401
-        assert (await other_device.post("/api/v1/auth/refresh")).status_code == 401
-    assert (await client.get("/api/v1/auth/me")).status_code == 200
-    assert (await login(client, account.email, "password-2")).status_code == 200
-
-
-@pytest.mark.case(id="AUTH-PASSWORD-003")
-async def test_password_change_requires_current_password(
-    client: AsyncClient, account: Account
-) -> None:
-    response = await client.post(
-        "/api/v1/auth/password",
-        json={"current_password": "wrong-password", "new_password": "password-2"},
-    )
-
-    assert response.status_code == 422
-    assert error_code(response) == "auth.wrong_current_password"
 
 
 @pytest.mark.case(id="AUTH-SESSION-007")

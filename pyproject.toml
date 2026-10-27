@@ -4,8 +4,8 @@ version = "0.1.0"
 description = "Сервис входа и регистрации AIIP"
 requires-python = ">=3.14"
 dependencies = [
+    "aio-pika>=10.2.1",
     "alembic>=1.20.0",
-    "argon2-cffi>=25.1.0",
     "asyncpg>=0.32.0",
     "dishka>=1.10.1",
     "email-validator>=2.3.0",

@@ -35,6 +35,49 @@ class CacheService:
         except RedisError as exc:
             raise CacheUnavailableError from exc
 
+    async def set_value(self, key: str, value: str, ttl_seconds: int) -> None:
+        try:
+            await self._client.connection().set(key, value, ex=ttl_seconds)
+        except RedisError as exc:
+            raise CacheUnavailableError from exc
+
+    async def replace_value(self, key: str, value: str) -> bool:
+        """Перезаписывает значение существующего ключа, не трогая срок жизни; нет ключа — False."""
+        try:
+            return bool(await self._client.connection().set(key, value, xx=True, keepttl=True))
+        except RedisError as exc:
+            raise CacheUnavailableError from exc
+
+    async def get_value(self, key: str) -> str | None:
+        try:
+            value = await self._client.connection().get(key)
+        except RedisError as exc:
+            raise CacheUnavailableError from exc
+        return value.decode() if isinstance(value, bytes) else value
+
+    async def delete_one(self, key: str) -> bool:
+        """Удаляет ключ; True только у того из параллельных вызовов, который его удалил."""
+        try:
+            return bool(await self._client.connection().delete(key))
+        except RedisError as exc:
+            raise CacheUnavailableError from exc
+
+    async def increment(self, key: str, ttl_seconds: int) -> tuple[int, int]:
+        """Атомарно увеличивает счётчик; срок жизни ставится при создании.
+
+        Returns:
+            Новое значение и сколько секунд осталось жить счётчику.
+        """
+        try:
+            async with self._client.connection().pipeline(transaction=True) as pipeline:
+                pipeline.incr(key)
+                pipeline.expire(key, ttl_seconds, nx=True)
+                pipeline.ttl(key)
+                count, _, ttl = await pipeline.execute()
+        except RedisError as exc:
+            raise CacheUnavailableError from exc
+        return int(count), int(ttl)
+
     async def ping(self) -> None:
         try:
             await self._client.connection().ping()

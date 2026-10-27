@@ -77,12 +77,6 @@ layer = "unit"
 domain = "security"
 
 [[scenario]]
-id = "AUTH-PASSWORD-001"
-title = "Пароль хэшируется argon2 с солью"
-layer = "unit"
-domain = "security"
-
-[[scenario]]
 id = "AUTH-KEY-001"
 title = "Без ключа подписи сервис не запускается"
 layer = "unit"
@@ -90,7 +84,7 @@ domain = "security"
 
 [[scenario]]
 id = "API-ERROR-001"
-title = "Ошибка отдаётся как problem+json, request_id совпадает с X-Request-ID, контекст ошибки наружу не уходит"
+title = "Ошибка отдаётся конвертом error с code, message, request_id и details; request_id совпадает с X-Request-ID, контекст ошибки наружу не уходит"
 layer = "unit"
 domain = "api"
 
@@ -105,42 +99,6 @@ id = "API-ERROR-003"
 title = "Непредвиденная ошибка скрывает детали, но отдаёт request_id в теле и заголовке"
 layer = "unit"
 domain = "api"
-
-[[scenario]]
-id = "AUTH-REGISTER-001"
-title = "Регистрация сразу открывает сессию, почта приводится к нижнему регистру, в ответе нет ролей"
-layer = "integration"
-domain = "auth"
-
-[[scenario]]
-id = "AUTH-REGISTER-002"
-title = "Занятая почта в любом регистре отклоняется"
-layer = "integration"
-domain = "auth"
-
-[[scenario]]
-id = "AUTH-REGISTER-003"
-title = "Некорректная почта или короткий пароль отклоняются"
-layer = "integration"
-domain = "auth"
-
-[[scenario]]
-id = "AUTH-LOGIN-001"
-title = "Вход открывает новую сессию"
-layer = "integration"
-domain = "auth"
-
-[[scenario]]
-id = "AUTH-LOGIN-002"
-title = "Вход не раскрывает, существует ли почта"
-layer = "integration"
-domain = "auth"
-
-[[scenario]]
-id = "AUTH-LOGIN-004"
-title = "Неверный пароль короче минимума отклоняется как неверные данные, а не как ошибка формы"
-layer = "integration"
-domain = "auth"
 
 [[scenario]]
 id = "AUTH-SESSION-001"
@@ -168,7 +126,7 @@ domain = "auth"
 
 [[scenario]]
 id = "AUTH-SESSION-005"
-title = "Токен в заголовке Authorization принимается наравне с кукой"
+title = "Токен в заголовке Authorization (вызов другого сервиса) принимается наравне с кукой"
 layer = "integration"
 domain = "auth"
 
@@ -193,18 +151,6 @@ domain = "auth"
 [[scenario]]
 id = "AUTH-LOGOUT-002"
 title = "Выход без сессии идемпотентен"
-layer = "integration"
-domain = "auth"
-
-[[scenario]]
-id = "AUTH-PASSWORD-002"
-title = "Смена пароля сразу отзывает остальные сессии и их refresh, текущая остаётся"
-layer = "integration"
-domain = "auth"
-
-[[scenario]]
-id = "AUTH-PASSWORD-003"
-title = "Смена пароля требует верный текущий пароль"
 layer = "integration"
 domain = "auth"
 
@@ -252,7 +198,7 @@ domain = "auth"
 
 [[scenario]]
 id = "AUTH-COOKIE-001"
-title = "Куки HttpOnly и SameSite=Strict, access уходит во все /api, refresh — только в auth"
+title = "Куки HttpOnly и SameSite=Strict, access уходит на весь сайт, refresh — только в auth, токенов в теле ответа нет"
 layer = "integration"
 domain = "auth"
 
@@ -263,28 +209,10 @@ layer = "integration"
 domain = "auth"
 
 [[scenario]]
-id = "AUTH-PASSWORD-004"
-title = "Одновременно считается не больше заданного числа хэшей пароля: всплеск входов не выводит под за лимит памяти"
-layer = "unit"
-domain = "security"
-
-[[scenario]]
 id = "METRICS-001"
 title = "/metrics считает запросы по шаблону маршрута и ошибки по коду, без health и самого /metrics"
 layer = "integration"
 domain = "metrics"
-
-[[scenario]]
-id = "AUTH-LOGIN-005"
-title = "Вход освобождает БД на время Argon2 и не выдаёт сессию со старым паролем при одновременной смене"
-layer = "integration"
-domain = "auth"
-
-[[scenario]]
-id = "AUTH-REGISTER-004"
-title = "Параллельная регистрация одной почты создаёт один аккаунт и возвращает конфликт второй попытке"
-layer = "integration"
-domain = "auth"
 
 [[scenario]]
 id = "API-LOG-001"
@@ -323,30 +251,6 @@ layer = "unit"
 domain = "api"
 
 [[scenario]]
-id = "AUTH-PASSWORD-007"
-title = "Очередь на хэширование сверх предела сразу отказывает перегрузкой, освободившись — принимает снова"
-layer = "unit"
-domain = "security"
-
-[[scenario]]
-id = "AUTH-PASSWORD-008"
-title = "Отменённый запрос не освобождает слот хэширования, пока Argon2 не закончил"
-layer = "unit"
-domain = "security"
-
-[[scenario]]
-id = "AUTH-PASSWORD-005"
-title = "Трейс отделяет ожидание слота от Argon2, сохраняет контекст потока и не содержит пароль или хэш"
-layer = "unit"
-domain = "security"
-
-[[scenario]]
-id = "AUTH-PASSWORD-006"
-title = "Метрики учитывают неверный пароль и неизвестного пользователя, счётчики активных операций возвращаются в ноль"
-layer = "unit"
-domain = "security"
-
-[[scenario]]
 id = "API-ADMISSION-001"
 title = "Запрос сверх предела одновременных сразу получает 503 с Retry-After, пробы проходят, освободившийся слот принимает снова"
 layer = "unit"
@@ -363,3 +267,74 @@ id = "DB-TIMEOUT-001"
 title = "Превышение statement_timeout — недоступность БД (503), а не непредвиденная ошибка"
 layer = "integration"
 domain = "db"
+[[scenario]]
+id = "API-ERROR-005"
+title = "Лимит — 429 с Retry-After, отказ по сроку — 410"
+layer = "unit"
+domain = "api"
+
+[[scenario]]
+id = "AUTH-OTP-001"
+title = "Код — шесть цифр с ведущими нулями, в кэше только HMAC-digest, привязанный к challenge"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-ORIGIN-001"
+title = "Изменяющий запрос к /api без разрешённого Origin получает 403, вызов сервиса с Authorization и GET проходят"
+layer = "unit"
+domain = "security"
+
+[[scenario]]
+id = "AUTH-LOGIN-001"
+title = "Запрос кода отвечает одинаково для известной и новой почты, ставит письмо в очередь и не выдаёт кук"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGIN-002"
+title = "Код новой почты создаёт аккаунт и открывает сессию, повторный вход аккаунт не создаёт"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGIN-003"
+title = "Неверный код сообщает остаток попыток, после исчерпания challenge недействителен"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGIN-004"
+title = "Код действует один раз и не дольше своего срока"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGIN-005"
+title = "Повторная отправка не раньше интервала, новый код отменяет прежний"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGIN-006"
+title = "Число писем на одну почту в час ограничено: сверх лимита 429 с Retry-After"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGIN-007"
+title = "Письмо некому принять — 503, challenge не остаётся"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGIN-008"
+title = "Параллельное подтверждение двух кодов новой почты создаёт один аккаунт"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-LOGIN-009"
+title = "Код и challenge не попадают в логи"
+layer = "integration"
+domain = "auth"

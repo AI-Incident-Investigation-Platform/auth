@@ -1,4 +1,4 @@
-from src.core.errors import CoreError, InternalError, OverloadedError, UnauthenticatedError
+from src.core.errors import CoreError, ForbiddenError, InternalError, UnauthenticatedError
 
 
 class NotAuthenticatedError(UnauthenticatedError):
@@ -16,6 +16,6 @@ class SigningKeyUnavailableError(InternalError):
     message = "Ключ подписи токенов не найден или повреждён"
 
 
-class PasswordHashingOverloadedError(OverloadedError):
-    code = "security.password_hashing_overloaded"
-    message = "Сервис перегружен, повторите попытку через несколько секунд"
+class OriginForbiddenError(ForbiddenError):
+    code = "security.origin_forbidden"
+    message = "Запрос с этого адреса не принимается"

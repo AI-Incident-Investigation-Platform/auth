@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 
+import aio_pika
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -7,10 +8,12 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import cfg
 from src.core.db.db import engine, session_maker
 from src.core.db.models import Base
 from src.main import app as auth_app
 from src.main import container
+from tests.support.auth import ORIGIN, Mailbox
 
 
 @pytest.fixture(scope="session")
@@ -21,8 +24,24 @@ async def app() -> AsyncIterator[FastAPI]:
 
 @pytest.fixture
 async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as c:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver", headers={"Origin": ORIGIN}
+    ) as c:
         yield c
+
+
+@pytest.fixture
+async def mailbox(app: FastAPI) -> AsyncIterator[Mailbox]:
+    connection = await aio_pika.connect(cfg.rabbitmq.url)
+    channel = await connection.channel()
+    exchange = await channel.declare_exchange(
+        cfg.email.exchange, aio_pika.ExchangeType.DIRECT, durable=True
+    )
+    queue = await channel.declare_queue(exclusive=True)
+    await queue.bind(exchange, routing_key=cfg.email.transactional_routing_key)
+    box = Mailbox(connection, queue)
+    yield box
+    await box.close()
 
 
 @pytest.fixture

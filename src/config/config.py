@@ -73,16 +73,30 @@ class Auth(BaseModel):
     access_token_ttl_minutes: int = 15
     refresh_token_ttl_days: int = 30
     refresh_reuse_grace_seconds: int = 10
-    access_cookie_path: str = "/api"
+    access_cookie_path: str = "/"
     cookie_secure: bool = True
-    password_min_length: int = 8
-    password_max_length: int = 128
-    password_hashing_concurrency: int = Field(default=2, ge=1)
-    password_hashing_queue_limit: int = Field(default=20, ge=0)
-    # OWASP: 19 МиБ, 2 прохода, 1 поток — хэш в одном ядре, CPU-лимит не замораживает event loop.
-    password_hash_memory_kib: int = Field(default=19456, ge=8192)
-    password_hash_time_cost: int = Field(default=2, ge=1)
-    password_hash_parallelism: int = Field(default=1, ge=1)
+    allowed_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost", "https://localhost"]
+    )
+    otp_code_ttl_seconds: int = Field(default=300, ge=1)
+    otp_challenge_ttl_seconds: int = Field(default=900, ge=1)
+    otp_max_attempts: int = Field(default=5, ge=1)
+    otp_resend_interval_seconds: int = Field(default=60, ge=0)
+    otp_max_resends: int = Field(default=3, ge=0)
+    # каждое письмо стоит квоты почтового провайдера
+    otp_sends_per_email_per_hour: int = Field(default=10, ge=1)
+
+
+class Rabbitmq(BaseModel):
+    url: str = ""
+    connect_timeout_seconds: float = Field(default=2, gt=0)
+    publish_timeout_seconds: float = Field(default=2, gt=0)
+
+
+class Email(BaseModel):
+    exchange: str = "email"
+    transactional_routing_key: str = "send.transactional"
+    locale: str = "ru"
 
 
 class Logging(BaseModel):
@@ -102,6 +116,8 @@ class Config(BaseSettings):
     cache: Cache = Cache()
     tracing: Tracing = Tracing()
     auth: Auth = Auth()
+    rabbitmq: Rabbitmq = Rabbitmq()
+    email: Email = Email()
     logging: Logging = Logging()
 
     def missing_required(self) -> list[str]:
@@ -110,6 +126,7 @@ class Config(BaseSettings):
             "database.postgres_db": self.database.postgres_db,
             "database.postgres_username": self.database.postgres_username,
             "cache.host": self.cache.host,
+            "rabbitmq.url": self.rabbitmq.url,
             "auth.private_key_path": self.auth.private_key_path,
         }
         if self.tracing.enabled:

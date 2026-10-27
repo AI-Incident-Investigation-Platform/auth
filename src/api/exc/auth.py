@@ -1,14 +1,24 @@
-from src.core.errors import ConflictError, RuleViolationError, UnauthenticatedError
+from src.core.errors import GoneError, RateLimitedError, UnauthenticatedError
 
 
-class EmailAlreadyRegisteredError(ConflictError):
-    code = "auth.email_already_registered"
-    message = "Аккаунт с этой почтой уже зарегистрирован"
+class OtpInvalidError(UnauthenticatedError):
+    code = "auth.otp_invalid"
+    message = "Неверный код"
 
 
-class InvalidCredentialsError(UnauthenticatedError):
-    code = "auth.invalid_credentials"
-    message = "Неверный email или пароль"
+class OtpExpiredError(GoneError):
+    code = "auth.otp_expired"
+    message = "Срок действия кода истёк, запросите новый"
+
+
+class ChallengeInvalidError(GoneError):
+    code = "auth.challenge_invalid"
+    message = "Код больше недействителен, начните вход заново"
+
+
+class OtpRateLimitedError(RateLimitedError):
+    code = "auth.otp_rate_limited"
+    message = "Слишком много запросов кода, повторите позже"
 
 
 class InvalidRefreshTokenError(UnauthenticatedError):
@@ -19,11 +29,6 @@ class InvalidRefreshTokenError(UnauthenticatedError):
 class RefreshTokenReusedError(UnauthenticatedError):
     code = "auth.refresh_token_reused"
     message = "Сессия отозвана, войдите заново"
-
-
-class WrongCurrentPasswordError(RuleViolationError):
-    code = "auth.wrong_current_password"
-    message = "Неверный текущий пароль"
 
 
 class AccountNotFoundError(UnauthenticatedError):

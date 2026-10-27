@@ -15,3 +15,12 @@ class IssuedTokens:
 class SignedIn:
     user: UserDTO
     tokens: IssuedTokens
+    account_created: bool
+
+
+@dataclass(frozen=True)
+class LoginChallenge:
+    challenge_id: str
+    masked_email: str
+    expires_in: int
+    resend_after: int

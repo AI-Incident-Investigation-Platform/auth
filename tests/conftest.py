@@ -1,3 +1,4 @@
+import asyncio
 import os
 import socket
 import subprocess
@@ -7,6 +8,7 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 
+import aio_pika
 import pytest
 import redis
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -25,6 +27,7 @@ TESTS_ROOT = ROOT / "tests"
 TEST_DATABASE_PREFIX = "auth_test_"
 _POSTGRES_KEY = pytest.StashKey[PostgresContainer]()
 _DRAGONFLY_KEY = pytest.StashKey[DockerContainer]()
+_RABBITMQ_KEY = pytest.StashKey[DockerContainer]()
 
 TEST_KEY_PATH = Path(tempfile.mkdtemp(prefix="auth-test-keys-")) / "private.pem"
 TEST_KEY_PATH.write_bytes(
@@ -43,6 +46,8 @@ os.environ.update(
         "CACHE__HOST": "127.0.0.1",
         "CACHE__PORT": "1",
         "CACHE__KEY_PREFIX": "auth:",
+        "RABBITMQ__URL": "amqp://test_only:test_only@127.0.0.1:1/aiip",
+        "AUTH__ALLOWED_ORIGINS": '["http://testserver"]',
         "AUTH__PRIVATE_KEY_PATH": str(TEST_KEY_PATH),
         "AUTH__COOKIE_SECURE": "false",
         "TRACING__ENABLED": "false",
@@ -55,7 +60,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--suite",
         choices=[suite.value for suite in Suite],
         default=Suite.FULL.value,
-        help="Слой тестов: unit (без Docker), integration (Postgres и Dragonfly), full.",
+        help="Слой тестов: unit (без Docker), integration (Postgres, Dragonfly, RabbitMQ), full.",
     )
 
 
@@ -127,6 +132,39 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         pytest.exit(f"Integration-тестам нужен Dragonfly, он не поднялся: {exc}", returncode=2)
     session.config.stash[_DRAGONFLY_KEY] = dragonfly
 
+    rabbitmq = (
+        DockerContainer("rabbitmq:4.3.5-alpine")
+        .with_env("RABBITMQ_DEFAULT_USER", "test_only")
+        .with_env("RABBITMQ_DEFAULT_PASS", "test_only")
+        .with_env("RABBITMQ_DEFAULT_VHOST", "aiip")
+        .with_exposed_ports(5672)
+    )
+    try:
+        rabbitmq.start()
+        url = (
+            f"amqp://test_only:test_only@{rabbitmq.get_container_host_ip()}:"
+            f"{rabbitmq.get_exposed_port(5672)}/aiip"
+        )
+        asyncio.run(_wait_for_rabbitmq(url))
+        os.environ["RABBITMQ__URL"] = url
+    except BaseException as exc:
+        rabbitmq.stop()
+        pytest.exit(f"Integration-тестам нужен RabbitMQ, он не поднялся: {exc}", returncode=2)
+    session.config.stash[_RABBITMQ_KEY] = rabbitmq
+
+
+async def _wait_for_rabbitmq(url: str) -> None:
+    deadline = time.monotonic() + 60
+    while True:
+        try:
+            connection = await aio_pika.connect(url, timeout=2)
+            await connection.close()
+            return
+        except aio_pika.exceptions.AMQPError, OSError, TimeoutError:
+            if time.monotonic() > deadline:
+                raise
+            await asyncio.sleep(0.5)
+
 
 def pytest_sessionfinish(session: pytest.Session) -> None:
     postgres = session.config.stash.get(_POSTGRES_KEY, None)
@@ -135,6 +173,9 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
     dragonfly = session.config.stash.get(_DRAGONFLY_KEY, None)
     if dragonfly is not None:
         dragonfly.stop()
+    rabbitmq = session.config.stash.get(_RABBITMQ_KEY, None)
+    if rabbitmq is not None:
+        rabbitmq.stop()
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

@@ -6,6 +6,7 @@ private_key_path = "keys/private.pem"
 access_token_ttl_minutes = 15
 refresh_token_ttl_days = 30
 cookie_secure = false
+allowed_origins = ["http://localhost", "https://localhost"]
 
 [logging]
 level = "INFO"
@@ -24,6 +25,9 @@ port = 6379
 password = "change-me"
 db = 0
 key_prefix = "auth:"
+
+[rabbitmq]
+url = "amqp://auth:change-me@rabbitmq.infra:5672/aiip"
 
 [tracing]
 otlp_endpoint = "http://alloy.infra:4318"

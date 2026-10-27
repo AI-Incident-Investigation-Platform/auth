@@ -8,6 +8,7 @@ CONTEXT := k3d-$(CLUSTER)
 KUBECTL := kubectl --context $(CONTEXT) -n apps
 IMAGE := aiip-auth:$(shell date +%Y%m%d%H%M%S)
 ON_HOST := DATABASE__POSTGRES_HOST=localhost CACHE__HOST=localhost \
+           RABBITMQ__URL=$$(sed -n 's|^url = "\(amqp://[^@]*@\)[^:/]*\(.*\)"|\1localhost\2|p' config.toml) \
            TRACING__OTLP_ENDPOINT=http://localhost:4318
 NEED_FORWARD = @nc -z localhost 5432 2>/dev/null || { echo "инфра закрыта: запусти make -C ../infra forward в соседнем терминале"; exit 1; }
 
@@ -45,7 +46,7 @@ help:
 	@echo ""
 	@echo "  Тесты"
 	@echo "    test                      unit-тесты (без Docker)"
-	@echo "    test-integration          integration-тесты (Postgres и Dragonfly в Testcontainers)"
+	@echo "    test-integration          integration-тесты (Postgres, Dragonfly, RabbitMQ в Testcontainers)"
 	@echo "    test-all                  все тесты"
 	@echo ""
 
