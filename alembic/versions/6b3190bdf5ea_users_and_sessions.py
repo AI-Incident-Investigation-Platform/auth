@@ -21,7 +21,6 @@ def upgrade() -> None:
     op.create_table('users',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('email', sa.String(), nullable=False),
-    sa.Column('password_hash', sa.String(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.CheckConstraint('email = lower(email)', name=op.f('ck_users_email_lowercase')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_users')),

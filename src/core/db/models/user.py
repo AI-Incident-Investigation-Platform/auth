@@ -12,5 +12,4 @@ class User(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid7)
     email: Mapped[str] = mapped_column(unique=True)
-    password_hash: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
