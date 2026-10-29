@@ -62,6 +62,8 @@ async def test_code_request_is_identical_for_known_and_new_email(
     assert known_letter.body["template"] == new_letter.body["template"] == "auth.login_code"
     assert known_letter.body["to"] == account.email
     assert new_letter.body["to"] == "newcomer@example.com"
+    assert known_letter.body["collapse_key"] == f"auth.login_code:{account.email}"
+    assert "created_at" in known_letter.body
     assert len(known_letter.code) == 6 and known_letter.code.isdigit()
     assert known_letter.message.message_id == known_letter.body["message_id"]
     assert known_letter.message.expiration is not None

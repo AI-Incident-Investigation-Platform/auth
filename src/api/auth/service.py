@@ -199,6 +199,8 @@ class AuthService:
                 to=challenge.email,
                 params={"code": code, "expires_in": cfg.auth.otp_code_ttl_seconds},
                 ttl_seconds=cfg.auth.otp_code_ttl_seconds,
+                # новый код на тот же адрес делает ждущее письмо со старым кодом бесполезным
+                collapse_key=f"{EmailTemplate.LOGIN_CODE.value}:{challenge.email}",
             )
         )
 

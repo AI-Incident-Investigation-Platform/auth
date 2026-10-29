@@ -22,15 +22,19 @@ class EmailService:
             EmailTimeoutError: брокер не подтвердил задачу вовремя.
         """
         message_id = str(uuid7())
-        expires_at = datetime.now(UTC) + timedelta(seconds=letter.ttl_seconds)
-        body = {
+        created_at = datetime.now(UTC)
+        expires_at = created_at + timedelta(seconds=letter.ttl_seconds)
+        body: dict[str, object] = {
             "message_id": message_id,
             "template": letter.template.value,
             "to": letter.to,
             "locale": cfg.email.locale,
             "params": dict(letter.params),
+            "created_at": created_at.isoformat().replace("+00:00", "Z"),
             "expires_at": expires_at.isoformat().replace("+00:00", "Z"),
         }
+        if letter.collapse_key is not None:
+            body["collapse_key"] = letter.collapse_key
         headers: dict[str, str] = {}
         propagate.inject(headers)
         message = aio_pika.Message(
@@ -40,6 +44,6 @@ class EmailService:
             delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             expiration=letter.ttl_seconds,
             headers=dict(headers),
-            timestamp=datetime.now(UTC),
+            timestamp=created_at,
         )
         await self._client.publish(message, cfg.email.transactional_routing_key)
