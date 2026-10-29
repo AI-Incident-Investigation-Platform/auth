@@ -22,7 +22,7 @@ RabbitMQ.
 
 ## Стек
 
-Python 3.14, uv, FastAPI, dishka, SQLAlchemy 2.0 async + asyncpg, Alembic,
+Python 3.14, uv, FastAPI на uvicorn с uvloop и httptools, dishka, SQLAlchemy 2.0 async + asyncpg, Alembic,
 pydantic-settings, redis-клиент к Dragonfly, aio-pika к RabbitMQ, PyJWT, OpenTelemetry,
 prometheus-client; httpx — только в тестах.
 
