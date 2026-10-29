@@ -23,8 +23,8 @@ class Service(BaseModel):
     port: int = 8001
     bind_host: str = "127.0.0.1"
     route_prefix: str = "/api/v1/auth"
-    # пропускная способность процесса × допустимое время ответа (закон Литтла)
-    max_concurrent_requests: int = Field(default=32, ge=1)
+    # пропускная способность процесса × допустимое время ответа (закон Литтла): ~220/с × ~0,3 с
+    max_concurrent_requests: int = Field(default=64, ge=1)
     overload_retry_after_seconds: int = Field(default=2, ge=1)
 
 

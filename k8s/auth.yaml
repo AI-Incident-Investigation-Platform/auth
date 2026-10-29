@@ -58,6 +58,7 @@ spec:
               path: /health
               port: http
             periodSeconds: 10
+            timeoutSeconds: 3
           lifecycle:
             preStop:
               sleep:

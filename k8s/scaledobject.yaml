@@ -5,7 +5,7 @@ metadata:
 spec:
   scaleTargetRef:
     name: auth
-  minReplicaCount: 1
+  minReplicaCount: 2
   maxReplicaCount: 3
   pollingInterval: 5
   fallback:
