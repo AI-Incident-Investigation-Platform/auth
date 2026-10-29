@@ -34,8 +34,9 @@ class Database(BaseModel):
     postgres_port: int = 5432
     postgres_host: str = ""
     postgres_password: str = ""
-    pool_size: int = Field(default=5, ge=1)
-    pool_max_overflow: int = Field(default=5, ge=0)
+    # постоянный пул без overflow: соединения сверх пула открывались и закрывались на каждом пике
+    pool_size: int = Field(default=10, ge=1)
+    pool_max_overflow: int = Field(default=0, ge=0)
     pool_timeout_seconds: float = Field(default=2, gt=0)
     pool_recycle_seconds: int = Field(default=1800, ge=1)
     statement_timeout_ms: int = Field(default=5000, ge=1)

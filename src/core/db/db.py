@@ -11,7 +11,8 @@ engine = create_async_engine(
     pool_size=cfg.database.pool_size,
     max_overflow=cfg.database.pool_max_overflow,
     pool_timeout=cfg.database.pool_timeout_seconds,
-    pool_pre_ping=True,
+    # обрыв соединения сбрасывает весь пул, так что пинг перед каждым запросом не нужен
+    pool_pre_ping=False,
     pool_recycle=cfg.database.pool_recycle_seconds,
     connect_args={
         "server_settings": {
