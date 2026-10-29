@@ -18,7 +18,9 @@ def setup_tracing(app: FastAPI, engine: AsyncEngine) -> None:
         BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{cfg.tracing.otlp_endpoint}/v1/traces"))
     )
     trace.set_tracer_provider(provider)
-    FastAPIInstrumentor.instrument_app(app, excluded_urls="/health,/ready,/metrics")
+    FastAPIInstrumentor.instrument_app(
+        app, excluded_urls="/health,/ready,/metrics", exclude_spans=["receive", "send"]
+    )
     SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
     RedisInstrumentor().instrument()
 
