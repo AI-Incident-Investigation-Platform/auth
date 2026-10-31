@@ -1,14 +1,16 @@
 import hashlib
 import json
 from datetime import datetime
+from uuid import UUID
 
 from src.config import cfg
 from src.core.cache.service import CacheService
 from src.core.security.dto import OtpChallenge, SendCount
+from src.core.security.enums import OtpPurpose
 
 
 class OtpChallenges:
-    """Challenge входа по коду в кэше: живёт не дольше otp_challenge_ttl_seconds.
+    """Challenge кода из письма в кэше: живёт не дольше otp_challenge_ttl_seconds.
 
     Попытки считаются отдельным счётчиком (INCR), поэтому параллельные догадки
     не обходят лимит. Использованный challenge удаляется, и только один из
@@ -71,22 +73,32 @@ class OtpChallenges:
     def _dump(challenge: OtpChallenge) -> str:
         return json.dumps(
             {
+                "purpose": challenge.purpose.value,
                 "email": challenge.email,
                 "code_digest": challenge.code_digest,
                 "code_expires_at": challenge.code_expires_at.isoformat(),
                 "resend_available_at": challenge.resend_available_at.isoformat(),
                 "resends": challenge.resends,
+                "user_id": str(challenge.user_id) if challenge.user_id else None,
+                "new_email": challenge.new_email,
+                "new_code_digest": challenge.new_code_digest,
             }
         )
 
     @staticmethod
     def _load(challenge_id: str, raw: str) -> OtpChallenge:
         data = json.loads(raw)
+        user_id = data.get("user_id")
         return OtpChallenge(
             challenge_id=challenge_id,
+            # challenge прежней версии без purpose выдан входом
+            purpose=OtpPurpose(data.get("purpose", OtpPurpose.LOGIN)),
             email=str(data["email"]),
             code_digest=str(data["code_digest"]),
             code_expires_at=datetime.fromisoformat(data["code_expires_at"]),
             resend_available_at=datetime.fromisoformat(data["resend_available_at"]),
             resends=int(data["resends"]),
+            user_id=UUID(user_id) if user_id else None,
+            new_email=data.get("new_email"),
+            new_code_digest=data.get("new_code_digest"),
         )

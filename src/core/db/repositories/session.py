@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -12,3 +14,20 @@ class SessionRepository(BaseRepository[Session]):
     async def get_for_update(self, session_id: UUID) -> Session | None:
         query = select(Session).where(Session.id == session_id).with_for_update()
         return await self._session.scalar(query)
+
+    async def lock_live_for_user(
+        self, user_id: UUID, now: datetime, except_session_id: UUID
+    ) -> Sequence[Session]:
+        """Живые сессии пользователя, кроме одной, под блокировкой строк."""
+        query = (
+            select(Session)
+            .where(
+                Session.user_id == user_id,
+                Session.id != except_session_id,
+                Session.revoked_at.is_(None),
+                Session.expires_at > now,
+            )
+            .order_by(Session.id)
+            .with_for_update()
+        )
+        return (await self._session.scalars(query)).all()

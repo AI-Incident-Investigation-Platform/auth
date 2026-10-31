@@ -1,4 +1,11 @@
-from src.core.errors import GoneError, RateLimitedError, UnauthenticatedError
+from src.core.errors import (
+    ConflictError,
+    GoneError,
+    NotFoundError,
+    RateLimitedError,
+    RuleViolationError,
+    UnauthenticatedError,
+)
 
 
 class OtpInvalidError(UnauthenticatedError):
@@ -34,3 +41,18 @@ class RefreshTokenReusedError(UnauthenticatedError):
 class AccountNotFoundError(UnauthenticatedError):
     code = "auth.account_not_found"
     message = "Аккаунт не найден, войдите заново"
+
+
+class EmailNotRegisteredError(NotFoundError):
+    code = "auth.email_not_registered"
+    message = "Аккаунта с этой почтой нет, зарегистрируйтесь"
+
+
+class EmailTakenError(ConflictError):
+    code = "auth.email_taken"
+    message = "Эта почта уже зарегистрирована"
+
+
+class EmailUnchangedError(RuleViolationError):
+    code = "auth.email_unchanged"
+    message = "Новая почта совпадает с текущей"

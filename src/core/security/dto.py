@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from src.core.security.enums import OtpPurpose
+
 
 @dataclass(frozen=True)
 class AccessTokenClaims:
@@ -36,12 +38,22 @@ class Jwk:
 
 @dataclass(frozen=True)
 class OtpChallenge:
+    """Ожидание кода из письма.
+
+    `email` — адрес, на который ушёл код. При смене почты это текущий адрес
+    пользователя `user_id`, а второй код (`new_code_digest`) ушёл на `new_email`.
+    """
+
     challenge_id: str
+    purpose: OtpPurpose
     email: str
     code_digest: str
     code_expires_at: datetime
     resend_available_at: datetime
     resends: int
+    user_id: UUID | None = None
+    new_email: str | None = None
+    new_code_digest: str | None = None
 
 
 @dataclass(frozen=True)

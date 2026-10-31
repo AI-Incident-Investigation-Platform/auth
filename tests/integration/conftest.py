@@ -13,7 +13,7 @@ from src.core.db.db import engine, session_maker
 from src.core.db.models import Base
 from src.main import app as auth_app
 from src.main import container
-from tests.support.auth import ORIGIN, Mailbox
+from tests.support.auth import ORIGIN, Mailbox, UserEvents
 
 
 @pytest.fixture(scope="session")
@@ -42,6 +42,21 @@ async def mailbox(app: FastAPI) -> AsyncIterator[Mailbox]:
     box = Mailbox(connection, queue)
     yield box
     await box.close()
+
+
+@pytest.fixture(autouse=True)
+async def user_events(app: FastAPI) -> AsyncIterator[UserEvents]:
+    """Получатель событий на месте users: без него брокер вернёт событие, и регистрация — 503."""
+    connection = await aio_pika.connect(cfg.rabbitmq.url)
+    channel = await connection.channel()
+    exchange = await channel.declare_exchange(
+        cfg.events.exchange, aio_pika.ExchangeType.TOPIC, durable=True
+    )
+    queue = await channel.declare_queue(exclusive=True)
+    await queue.bind(exchange, routing_key="user.*")
+    events = UserEvents(connection, queue)
+    yield events
+    await events.close()
 
 
 @pytest.fixture

@@ -13,6 +13,20 @@ class LoginRequest(BaseModel):
     email: NormalizedEmail
 
 
+class RegisterRequest(BaseModel):
+    email: NormalizedEmail
+
+
+class EmailChangeRequest(BaseModel):
+    new_email: NormalizedEmail
+
+
+class EmailChangeVerifyRequest(BaseModel):
+    challenge_id: ChallengeId
+    code: OtpCode
+    new_code: OtpCode
+
+
 class OtpVerifyRequest(BaseModel):
     challenge_id: ChallengeId
     code: OtpCode
@@ -25,6 +39,15 @@ class OtpResendRequest(BaseModel):
 class LoginChallengeResponse(BaseModel):
     challenge_id: str
     masked_email: str
+    delivery_status: Literal["queued"] = "queued"
+    expires_in: int
+    resend_after: int
+
+
+class EmailChangeChallengeResponse(BaseModel):
+    challenge_id: str
+    masked_email: str
+    masked_new_email: str
     delivery_status: Literal["queued"] = "queued"
     expires_in: int
     resend_after: int

@@ -17,10 +17,12 @@ from src.main import container
 from tests.support.auth import (
     Account,
     Mailbox,
+    UserEvents,
     client_with_cookies,
     error_code,
     sign_in,
     start_login,
+    start_registration,
     verify,
 )
 
@@ -42,56 +44,89 @@ async def shift_challenge(
 
 
 @pytest.mark.case(id="AUTH-LOGIN-001")
-async def test_code_request_is_identical_for_known_and_new_email(
+async def test_login_code_goes_only_to_registered_email(
     client: AsyncClient, account: Account, mailbox: Mailbox
 ) -> None:
     client.cookies.clear()
 
     known = await start_login(client, account.email.upper())
-    known_letter = await mailbox.next_letter()
-    new = await start_login(client, "newcomer@example.com")
-    new_letter = await mailbox.next_letter()
+    letter = await mailbox.next_letter()
+    unknown = await start_login(client, "newcomer@example.com")
 
-    assert known.status_code == new.status_code == 202
-    assert known.json().keys() == new.json().keys()
+    assert known.status_code == 202
     assert known.json()["masked_email"] == "u***@example.com"
     assert known.json()["delivery_status"] == "queued"
     assert known.json()["expires_in"] == cfg.auth.otp_code_ttl_seconds
     assert known.json()["resend_after"] == cfg.auth.otp_resend_interval_seconds
-    assert "set-cookie" not in known.headers and "set-cookie" not in new.headers
-    assert known_letter.body["template"] == new_letter.body["template"] == "auth.login_code"
-    assert known_letter.body["to"] == account.email
-    assert new_letter.body["to"] == "newcomer@example.com"
-    assert known_letter.body["collapse_key"] == f"auth.login_code:{account.email}"
-    assert "created_at" in known_letter.body
-    assert len(known_letter.code) == 6 and known_letter.code.isdigit()
-    assert known_letter.message.message_id == known_letter.body["message_id"]
-    assert known_letter.message.expiration is not None
+    assert "set-cookie" not in known.headers and "set-cookie" not in unknown.headers
+    assert letter.body["template"] == "auth.login_code"
+    assert letter.body["to"] == account.email
+    assert letter.body["collapse_key"] == f"auth.login_code:{account.email}"
+    assert "created_at" in letter.body
+    assert len(letter.code) == 6 and letter.code.isdigit()
+    assert letter.message.message_id == letter.body["message_id"]
+    assert letter.message.expiration is not None
+    assert unknown.status_code == 404
+    assert error_code(unknown) == "auth.email_not_registered"
+    assert await mailbox.is_empty()
 
 
-@pytest.mark.case(id="AUTH-LOGIN-002")
-async def test_code_for_new_email_creates_account_once(
-    app: FastAPI, client: AsyncClient, db: AsyncSession, mailbox: Mailbox
+@pytest.mark.case(id="AUTH-REGISTER-001")
+async def test_registration_creates_account_once_and_announces_it(
+    app: FastAPI,
+    client: AsyncClient,
+    db: AsyncSession,
+    mailbox: Mailbox,
+    user_events: UserEvents,
 ) -> None:
-    first = await sign_in(client, mailbox, "Newcomer@Example.com")
+    started = await start_registration(client, "Newcomer@Example.com")
+    letter = await mailbox.next_letter()
+    registered = await verify(client, started.json()["challenge_id"], letter.code)
+    event = await user_events.next_event()
+    again = await start_registration(client, "newcomer@example.com")
     async with client_with_cookies(app, {}) as other_device:
-        second = await sign_in(other_device, mailbox, "newcomer@example.com")
+        signed_in = await sign_in(other_device, mailbox, "newcomer@example.com")
 
-    assert first.status_code == second.status_code == 200
-    assert first.json()["account_created"] is True
-    assert second.json()["account_created"] is False
-    assert first.json()["user"]["email"] == "newcomer@example.com"
-    assert first.json()["user"]["id"] == second.json()["user"]["id"]
+    user = registered.json()["user"]
+    assert started.status_code == 202
+    assert letter.body["template"] == "auth.register_code"
+    assert registered.status_code == 200
+    assert registered.json()["account_created"] is True
+    assert user["email"] == "newcomer@example.com"
     assert {"access_token", "refresh_token"} <= set(client.cookies.keys())
-    assert (await client.get("/api/v1/auth/me")).json()["email"] == "newcomer@example.com"
+    assert event["type"] == "user.registered"
+    assert event["user_id"] == user["id"]
+    assert event["email"] == "newcomer@example.com"
+    assert event["event_id"] and event["occurred_at"]
+    assert again.status_code == 409
+    assert error_code(again) == "auth.email_taken"
+    assert signed_in.status_code == 200
+    assert signed_in.json()["account_created"] is False
+    assert signed_in.json()["user"]["id"] == user["id"]
     assert await db.scalar(select(func.count()).select_from(User)) == 1
+
+
+@pytest.mark.case(id="AUTH-REGISTER-002")
+async def test_unconfirmed_registration_event_cancels_registration(
+    client: AsyncClient, db: AsyncSession, mailbox: Mailbox, user_events: UserEvents
+) -> None:
+    started = await start_registration(client, "newcomer@example.com")
+    letter = await mailbox.next_letter()
+    await user_events.detach()
+
+    response = await verify(client, started.json()["challenge_id"], letter.code)
+
+    assert response.status_code == 503
+    assert error_code(response) == "events.unavailable"
+    assert "access_token" not in client.cookies
+    assert await db.scalar(select(func.count()).select_from(User)) == 0
 
 
 @pytest.mark.case(id="AUTH-LOGIN-003")
 async def test_wrong_code_counts_attempts_and_exhaustion_kills_challenge(
     client: AsyncClient, mailbox: Mailbox
 ) -> None:
-    started = await start_login(client, "user@example.com")
+    started = await start_registration(client, "user@example.com")
     challenge_id = started.json()["challenge_id"]
     code = (await mailbox.next_letter()).code
     wrong = "000000" if code != "000000" else "111111"
@@ -114,7 +149,7 @@ async def test_wrong_code_counts_attempts_and_exhaustion_kills_challenge(
 async def test_code_works_once_and_only_until_it_expires(
     app: FastAPI, client: AsyncClient, mailbox: Mailbox
 ) -> None:
-    started = await start_login(client, "user@example.com")
+    started = await start_registration(client, "user@example.com")
     challenge_id = started.json()["challenge_id"]
     code = (await mailbox.next_letter()).code
     assert (await verify(client, challenge_id, code)).status_code == 200
@@ -138,7 +173,7 @@ async def test_code_works_once_and_only_until_it_expires(
 async def test_resend_respects_interval_and_replaces_code(
     client: AsyncClient, mailbox: Mailbox
 ) -> None:
-    started = await start_login(client, "user@example.com")
+    started = await start_registration(client, "user@example.com")
     challenge_id = started.json()["challenge_id"]
     old_code = (await mailbox.next_letter()).code
 
@@ -164,9 +199,9 @@ async def test_letters_per_email_are_limited(
 ) -> None:
     monkeypatch.setattr(cfg.auth, "otp_sends_per_email_per_hour", 2)
 
-    accepted = [await start_login(client, "user@example.com") for _ in range(2)]
-    limited = await start_login(client, "USER@example.com")
-    other = await start_login(client, "other@example.com")
+    accepted = [await start_registration(client, "user@example.com") for _ in range(2)]
+    limited = await start_registration(client, "USER@example.com")
+    other = await start_registration(client, "other@example.com")
 
     assert [response.status_code for response in accepted] == [202, 202]
     assert limited.status_code == 429
@@ -189,7 +224,7 @@ async def test_unroutable_letter_is_503_and_leaves_no_challenge(
     monkeypatch.setattr(OtpChallenges, "save", remember_save)
     await mailbox.detach()
 
-    response = await start_login(client, "user@example.com")
+    response = await start_registration(client, "user@example.com")
 
     assert response.status_code == 503
     assert error_code(response) == "email.unavailable"
@@ -198,16 +233,16 @@ async def test_unroutable_letter_is_503_and_leaves_no_challenge(
 
 
 @pytest.mark.case(id="AUTH-LOGIN-008")
-async def test_parallel_verification_of_new_email_creates_one_account(
+async def test_parallel_registration_of_one_email_creates_one_account(
     app: FastAPI, db: AsyncSession, mailbox: Mailbox
 ) -> None:
     async with (
         client_with_cookies(app, {}) as first,
         client_with_cookies(app, {}) as second,
     ):
-        first_started = await start_login(first, "newcomer@example.com")
+        first_started = await start_registration(first, "newcomer@example.com")
         first_code = (await mailbox.next_letter()).code
-        second_started = await start_login(second, "newcomer@example.com")
+        second_started = await start_registration(second, "newcomer@example.com")
         second_code = (await mailbox.next_letter()).code
 
         responses = await asyncio.gather(
@@ -215,8 +250,8 @@ async def test_parallel_verification_of_new_email_creates_one_account(
             verify(second, second_started.json()["challenge_id"], second_code),
         )
 
-    assert [response.status_code for response in responses] == [200, 200]
-    assert sorted(response.json()["account_created"] for response in responses) == [False, True]
+    assert sorted(response.status_code for response in responses) == [200, 409]
+    assert {error_code(r) for r in responses if r.status_code == 409} == {"auth.email_taken"}
     assert await db.scalar(select(func.count()).select_from(User)) == 1
 
 
@@ -226,7 +261,7 @@ async def test_code_and_challenge_never_reach_logs(
 ) -> None:
     caplog.set_level(logging.DEBUG, logger="src")
 
-    started = await start_login(client, "user@example.com")
+    started = await start_registration(client, "user@example.com")
     challenge_id = started.json()["challenge_id"]
     code = (await mailbox.next_letter()).code
     await verify(client, challenge_id, "000000" if code != "000000" else "111111")
@@ -236,4 +271,4 @@ async def test_code_and_challenge_never_reach_logs(
     logged = " ".join(f"{record.getMessage()} {record.__dict__}" for record in caplog.records)
     assert challenge_id not in logged
     assert f"'{code}'" not in logged and f'"{code}"' not in logged
-    assert any(record.message == "Пользователь вошёл по коду" for record in caplog.records)
+    assert any(record.message == "Пользователь зарегистрировался" for record in caplog.records)

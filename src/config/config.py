@@ -87,6 +87,8 @@ class Auth(BaseModel):
     otp_resend_interval_seconds: int = Field(default=60, ge=0)
     otp_max_resends: int = Field(default=3, ge=0)
     # каждое письмо стоит квоты почтового провайдера
+    # письмо старой почте о смене: ждать его отправки дольше суток незачем
+    email_changed_letter_ttl_seconds: int = Field(default=86400, ge=1)
     otp_sends_per_email_per_hour: int = Field(default=10, ge=1)
 
 
@@ -100,6 +102,11 @@ class Email(BaseModel):
     exchange: str = "email"
     transactional_routing_key: str = "send.transactional"
     locale: str = "ru"
+
+
+class Events(BaseModel):
+    # topic exchange событий о пользователях; очереди объявляют потребители
+    exchange: str = "auth.events"
 
 
 class Logging(BaseModel):
@@ -121,6 +128,7 @@ class Config(BaseSettings):
     auth: Auth = Auth()
     rabbitmq: Rabbitmq = Rabbitmq()
     email: Email = Email()
+    events: Events = Events()
     logging: Logging = Logging()
 
     def missing_required(self) -> list[str]:

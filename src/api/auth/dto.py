@@ -24,3 +24,12 @@ class LoginChallenge:
     masked_email: str
     expires_in: int
     resend_after: int
+
+
+@dataclass(frozen=True)
+class EmailChangeChallenge:
+    challenge_id: str
+    masked_email: str
+    masked_new_email: str
+    expires_in: int
+    resend_after: int

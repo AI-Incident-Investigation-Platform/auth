@@ -26,21 +26,21 @@ class Letter:
         return str(self.body["params"]["code"])
 
 
-class Mailbox:
-    """Очередь теста на месте сервиса email: забирает задачи на письма, которые ставит auth."""
+class CapturedQueue:
+    """Очередь теста на месте получателя: забирает то, что публикует auth."""
 
     def __init__(self, connection: AbstractConnection, queue: AbstractQueue) -> None:
         self._connection = connection
         self._queue = queue
 
-    async def next_letter(self, timeout: float = 5) -> Letter:
+    async def next_message(self, timeout: float = 5) -> aio_pika.abc.AbstractIncomingMessage:
         deadline = asyncio.get_running_loop().time() + timeout
         while True:
             message = await self._queue.get(no_ack=True, fail=False)
             if message is not None:
-                return Letter(body=json.loads(message.body), message=message)
+                return message
             if asyncio.get_running_loop().time() > deadline:
-                raise TimeoutError("auth не поставил письмо в очередь")
+                raise TimeoutError("auth ничего не опубликовал")
             await asyncio.sleep(0.05)
 
     async def is_empty(self) -> bool:
@@ -53,8 +53,29 @@ class Mailbox:
         await self._connection.close()
 
 
+class Mailbox(CapturedQueue):
+    """На месте сервиса email: задачи на письма."""
+
+    async def next_letter(self, timeout: float = 5) -> Letter:
+        message = await self.next_message(timeout)
+        return Letter(body=json.loads(message.body), message=message)
+
+
+class UserEvents(CapturedQueue):
+    """На месте сервиса users: события о пользователях."""
+
+    async def next_event(self, timeout: float = 5) -> dict[str, Any]:
+        message = await self.next_message(timeout)
+        body: dict[str, Any] = json.loads(message.body)
+        return body
+
+
 async def start_login(client: AsyncClient, email: str) -> Response:
     return await client.post("/api/v1/auth/login", json={"email": email})
+
+
+async def start_registration(client: AsyncClient, email: str) -> Response:
+    return await client.post("/api/v1/auth/register", json={"email": email})
 
 
 async def verify(client: AsyncClient, challenge_id: str, code: str) -> Response:
@@ -65,6 +86,13 @@ async def verify(client: AsyncClient, challenge_id: str, code: str) -> Response:
 
 async def sign_in(client: AsyncClient, mailbox: Mailbox, email: str) -> Response:
     started = await start_login(client, email)
+    assert started.status_code == 202, started.text
+    letter = await mailbox.next_letter()
+    return await verify(client, started.json()["challenge_id"], letter.code)
+
+
+async def register(client: AsyncClient, mailbox: Mailbox, email: str) -> Response:
+    started = await start_registration(client, email)
     assert started.status_code == 202, started.text
     letter = await mailbox.next_letter()
     return await verify(client, started.json()["challenge_id"], letter.code)

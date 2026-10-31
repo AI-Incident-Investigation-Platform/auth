@@ -287,13 +287,19 @@ domain = "security"
 
 [[scenario]]
 id = "AUTH-LOGIN-001"
-title = "Запрос кода отвечает одинаково для известной и новой почты, ставит письмо в очередь и не выдаёт кук"
+title = "Код входа уходит только на зарегистрированную почту, незнакомая — 404; запрос кода не выдаёт кук"
 layer = "integration"
 domain = "auth"
 
 [[scenario]]
-id = "AUTH-LOGIN-002"
-title = "Код новой почты создаёт аккаунт и открывает сессию, повторный вход аккаунт не создаёт"
+id = "AUTH-REGISTER-001"
+title = "Регистрация создаёт аккаунт один раз и публикует user.registered; занятая почта — 409, вход по ней — тот же аккаунт"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-REGISTER-002"
+title = "Событие регистрации не подтверждено брокером — 503, аккаунт и сессия не созданы"
 layer = "integration"
 domain = "auth"
 
@@ -329,12 +335,30 @@ domain = "auth"
 
 [[scenario]]
 id = "AUTH-LOGIN-008"
-title = "Параллельное подтверждение двух кодов новой почты создаёт один аккаунт"
+title = "Параллельная регистрация одной почты создаёт один аккаунт, второй получает 409"
 layer = "integration"
 domain = "auth"
 
 [[scenario]]
 id = "AUTH-LOGIN-009"
 title = "Код и challenge не попадают в логи"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-EMAIL-001"
+title = "Смена почты подтверждается кодами с текущей и новой почты, публикует user.email_changed, предупреждает старую почту и закрывает остальные сессии"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-EMAIL-002"
+title = "Коды смены почты не взаимозаменяемы, не подходят для входа и чужой сессии"
+layer = "integration"
+domain = "auth"
+
+[[scenario]]
+id = "AUTH-EMAIL-003"
+title = "Смена на занятую почту — 409, на ту же — 422, без входа — 401"
 layer = "integration"
 domain = "auth"

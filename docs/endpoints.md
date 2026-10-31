@@ -9,23 +9,32 @@
 
 Gateway ограничивает весь `/api/v1/auth`: 10 запросов/с, burst 10. Сверх
 предела одновременных запросов пода (`service.max_concurrent_requests`,
-32) сервис отвечает `503` с `Retry-After`.
+64) сервис отвечает `503` с `Retry-After`.
 
 ## Публичные
 
 | Метод и путь | Кто зовёт | Вход | Ответ | Авторизация |
 |---|---|---|---|---|
-| `POST /api/v1/auth/login` | браузер | `{email}` | `202` `{challenge_id, masked_email, delivery_status, expires_in, resend_after}`, кук нет | нет |
+| `POST /api/v1/auth/register` | браузер | `{email}` | `202` `{challenge_id, masked_email, delivery_status, expires_in, resend_after}`, кук нет | нет |
+| `POST /api/v1/auth/login` | браузер | `{email}` | `202` как у `register`, кук нет | нет |
 | `POST /api/v1/auth/otp/verify` | браузер | `{challenge_id, code}` | `200` `{user: {id, email, created_at}, account_created}` + куки сессии | нет |
 | `POST /api/v1/auth/otp/resend` | браузер | `{challenge_id}` | `202` `{challenge_id, delivery_status, expires_in, resend_after}` | нет |
 | `POST /api/v1/auth/refresh` | браузер | кука `refresh_token` | `204` + новые куки | refresh-кука |
 | `POST /api/v1/auth/logout` | браузер | кука `refresh_token` | `204`, куки очищены, сессия закрыта | refresh-кука |
 | `GET /api/v1/auth/me` | браузер, сервисы | — | `200` `{id, email, created_at}` | access |
+| `POST /api/v1/auth/email/change` | браузер | `{new_email}` | `202` `{challenge_id, masked_email, masked_new_email, delivery_status, expires_in, resend_after}` | access |
+| `POST /api/v1/auth/email/change/verify` | браузер | `{challenge_id, code, new_code}` | `200` `{id, email, created_at}` | access |
 
-- Вход и регистрация — один поток. `login` отвечает одинаково для
-  известного и нового email и ставит письмо с кодом в очередь сервиса
-  `email`. Аккаунт нового email создаётся в `otp/verify`
-  (`account_created: true`). `email` приводится к нижнему регистру.
+- Регистрация и вход — разные запросы кода. `register` принимает только
+  новую почту (иначе `409`), `login` — только зарегистрированную (иначе
+  `404`); оба ставят письмо с кодом в очередь сервиса `email`. Код
+  регистрации в `otp/verify` создаёт аккаунт (`account_created: true`) и
+  публикует `user.registered`. `email` приводится к нижнему регистру.
+- Смена почты: `email/change` шлёт код на текущую почту и второй — на
+  новую; `email/change/verify` принимает оба (`code` — с текущей,
+  `new_code` — с новой), меняет почту, отзывает остальные сессии
+  пользователя, публикует `user.email_changed` и предупреждает старую почту
+  письмом. `otp/resend` присылает оба кода заново.
 - Код — 6 цифр, живёт `auth.otp_code_ttl_seconds` (300 с), неверных попыток
   `auth.otp_max_attempts` (5). Повтор — не раньше
   `auth.otp_resend_interval_seconds` (60 с) и не больше
@@ -74,8 +83,12 @@ Gateway ограничивает весь `/api/v1/auth`: 10 запросов/с
 | Код | Статус | Когда |
 |---|---|---|
 | `auth.otp_invalid` | 401 | неверный код; `details.attempts_left` — сколько попыток осталось |
-| `auth.otp_expired` | 410 | срок кода истёк; нужен `otp/resend` или новый `login` |
-| `auth.challenge_invalid` | 410 | challenge использован, исчерпан или истёк; нужен новый `login` |
+| `auth.otp_expired` | 410 | срок кода истёк; нужен `otp/resend` или новый запрос кода |
+| `auth.challenge_invalid` | 410 | challenge использован, исчерпан, истёк, выдан для другой ручки или другой сессии; при смене почты — почту уже сменили |
+| `auth.email_not_registered` | 404 | `login` на почту без аккаунта |
+| `auth.email_taken` | 409 | `register`, `email/change` или их подтверждение на занятую почту |
+| `auth.email_unchanged` | 422 | `email/change` на текущую почту |
+| `events.unavailable`, `events.timeout` | 503, 504 | брокер не подтвердил событие о пользователе; регистрация или смена почты не выполнены |
 | `auth.otp_rate_limited` | 429 | лимит писем на email, повтор раньше интервала или сверх лимита; заголовок `Retry-After` |
 | `email.unavailable`, `email.timeout` | 503, 504 | брокер недоступен или задачу некому принять; письмо не отправлено |
 | `security.origin_forbidden` | 403 | изменяющий запрос без разрешённого `Origin` |

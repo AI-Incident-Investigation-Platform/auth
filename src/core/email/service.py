@@ -6,12 +6,14 @@ import aio_pika
 from opentelemetry import propagate
 
 from src.config import cfg
-from src.core.email.client import EmailClient
 from src.core.email.dto import EmailLetter
+from src.core.email.exc import EmailTimeoutError, EmailUnavailableError
+from src.core.rabbitmq.client import RabbitmqClient
+from src.core.rabbitmq.exc import RabbitmqTimeoutError, RabbitmqUnavailableError
 
 
 class EmailService:
-    def __init__(self, client: EmailClient) -> None:
+    def __init__(self, client: RabbitmqClient) -> None:
         self._client = client
 
     async def send(self, letter: EmailLetter) -> None:
@@ -46,4 +48,14 @@ class EmailService:
             headers=dict(headers),
             timestamp=created_at,
         )
-        await self._client.publish(message, cfg.email.transactional_routing_key)
+        try:
+            await self._client.publish(
+                cfg.email.exchange,
+                aio_pika.ExchangeType.DIRECT,
+                message,
+                cfg.email.transactional_routing_key,
+            )
+        except RabbitmqTimeoutError as exc:
+            raise EmailTimeoutError({"template": letter.template.value}) from exc
+        except RabbitmqUnavailableError as exc:
+            raise EmailUnavailableError({"template": letter.template.value}) from exc

@@ -22,9 +22,9 @@ from src.core.di import (
     AuthProvider,
     CacheProvider,
     DbProvider,
-    EmailProvider,
     HealthProvider,
     JwksProvider,
+    RabbitmqProvider,
     SecurityProvider,
 )
 from src.core.logging import setup_logging
@@ -40,7 +40,7 @@ container = make_async_container(
     FastapiProvider(),
     DbProvider(),
     CacheProvider(),
-    EmailProvider(),
+    RabbitmqProvider(),
     SecurityProvider(),
     AuthProvider(),
     HealthProvider(),
