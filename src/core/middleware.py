@@ -57,12 +57,13 @@ class RequestLoggingMiddleware:
                 level,
                 message,
                 extra={
+                    "event": "http.request",
                     "http": {
                         "method": scope["method"],
                         "path": scope["path"],
                         "status_code": status_code,
                         "duration_ms": duration_ms,
-                    }
+                    },
                 },
             )
         finally:

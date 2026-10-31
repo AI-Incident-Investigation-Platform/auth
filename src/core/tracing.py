@@ -4,7 +4,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.redis import RedisInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -13,7 +13,11 @@ from src.config import cfg
 
 
 def setup_tracing(app: FastAPI, engine: AsyncEngine) -> None:
-    provider = TracerProvider(resource=Resource.create({SERVICE_NAME: cfg.service.name}))
+    provider = TracerProvider(
+        resource=Resource.create(
+            {SERVICE_NAME: cfg.service.name, SERVICE_VERSION: cfg.service.version}
+        )
+    )
     provider.add_span_processor(
         BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{cfg.tracing.otlp_endpoint}/v1/traces"))
     )

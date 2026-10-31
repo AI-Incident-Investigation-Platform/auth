@@ -20,6 +20,8 @@ PATHS_SOURCES: list[tuple[Path, type[PydanticBaseSettingsSource]]] = [
 
 class Service(BaseModel):
     name: str = "auth"
+    # тег образа, его подставляет сборка; на хосте — dev
+    version: str = "dev"
     port: int = 8001
     bind_host: str = "127.0.0.1"
     route_prefix: str = "/api/v1/auth"

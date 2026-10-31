@@ -49,8 +49,8 @@
 | Требование | Статус | Комментарий |
 |---|---|---|
 | Метка `app`, namespace | есть | `app: auth`, `apps` |
-| OTEL-ресурс `service.name`, `service.version`, `deployment.environment` | частично | только `service.name` |
-| JSON-логи: `timestamp`, `level`, `event`, `request_id`, `trace_id`, `service_name`, error_code | частично | есть `timestamp`, `level`, `trace_id`; `service` вместо `service_name`; `message` — фраза, а не `event`; `request_id` совпадает с `trace_id` и отдельно не пишется |
+| OTEL-ресурс `service.name`, `service.version`, `deployment.environment` | расходится | `service.version` — тег образа; `deployment.environment` не пишется: окружение одно |
+| JSON-логи: `timestamp`, `level`, `event`, `request_id`, `trace_id`, `service_name`, error_code | есть | плюс `service_version` и `message` — фраза для человека; `request_id` совпадает с `trace_id` и отдельно не пишется |
 | `/metrics` с низкой кардинальностью меток | есть | `path` — шаблон маршрута |
 | W3C trace context, OTLP в Alloy | есть | |
 | liveness и readiness | есть | `/health`, `/ready` |

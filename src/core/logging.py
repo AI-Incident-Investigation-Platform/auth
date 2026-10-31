@@ -15,7 +15,8 @@ class StructuredJsonFormatter(logging.Formatter):
         span_id = get_span_id()
         log_data = {
             **context,
-            "service": cfg.service.name,
+            "service_name": cfg.service.name,
+            "service_version": cfg.service.version,
             "trace_id": trace_id if trace_id != "-" else context.get("trace_id", "-"),
             "span_id": span_id if span_id != "-" else context.get("span_id", "-"),
             "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
@@ -52,7 +53,8 @@ class StructuredJsonFormatter(logging.Formatter):
                 "exc_text",
                 "stack_info",
                 "trace_id",
-                "service",
+                "service_name",
+                "service_version",
                 "color_message",
                 "span_id",
                 "timestamp",

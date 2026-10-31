@@ -59,6 +59,7 @@ async def test_error_logged_once_with_trace_duration_and_safe_stack(logs: io.Str
     assert len(entries) == 1
     entry = entries[0]
     assert entry["message"] == "Не удалось обработать запрос"
+    assert entry["event"] == "http.error"
     assert entry["level"] == "ERROR"
     assert len(entry["trace_id"]) == 32
     assert len(entry["span_id"]) == 16
@@ -141,12 +142,13 @@ def test_formatter_protects_fields_and_uses_current_span(logs: io.StringIO) -> N
     with trace.use_span(span, end_on_exit=True):
         logging.getLogger("src.test").info(
             "Операция завершена",
-            extra={"level": "ERROR", "timestamp": "wrong", "service": "wrong", "count": 2},
+            extra={"level": "ERROR", "timestamp": "wrong", "service_name": "wrong", "count": 2},
         )
     entry = json.loads(logs.getvalue())
     assert entry["level"] == "INFO"
     assert entry["timestamp"] != "wrong"
-    assert entry["service"] != "wrong"
+    assert entry["service_name"] != "wrong"
+    assert entry["service_version"] == "dev"
     assert entry["count"] == 2
     assert entry["span_id"] == format(span.get_span_context().span_id, "016x")
     provider.shutdown()
@@ -171,5 +173,6 @@ async def test_slow_successful_request_is_warning(
     entry = json.loads(logs.getvalue())
     assert entry["level"] == "WARNING"
     assert entry["message"] == "Запрос обработан медленно"
+    assert entry["event"] == "http.request"
     assert entry["http"]["status_code"] == 200
     assert entry["http"]["duration_ms"] >= 0

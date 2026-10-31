@@ -205,6 +205,7 @@ class ApiErrorHandler:
                 message,
                 exc_info=exc if level >= logging.ERROR else None,
                 extra={
+                    "event": "http.error",
                     "error": jsonable_encoder(error),
                     "http": {
                         "method": request.method,
